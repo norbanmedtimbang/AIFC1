@@ -73,19 +73,15 @@ const initialUsers: User[] = [
 ];
 
 const initialCategories: Category[] = [
-  { id: 'cat-1', name: 'Coffee', displayOrder: 1, colorCode: '#C68A57' },
-  { id: 'cat-2', name: 'Non Coffee', displayOrder: 2, colorCode: '#8E9E85' },
-  { id: 'cat-3', name: 'Food', displayOrder: 3, colorCode: '#D4C7B5' },
-  { id: 'cat-4', name: 'Snack', displayOrder: 4, colorCode: '#C29B7F' },
-  { id: 'cat-5', name: 'Dessert', displayOrder: 5, colorCode: '#E4A882' }
+  { id: 'cat-1', name: 'Espresso & Coffee', displayOrder: 1, colorCode: '#3B2925' },
+  { id: 'cat-2', name: 'Specialty Lattes', displayOrder: 2, colorCode: '#523B36' },
+  { id: 'cat-3', name: 'Cold Brew & Signatures', displayOrder: 3, colorCode: '#A8B5A0' },
+  { id: 'cat-4', name: 'Non-Coffee & Teas', displayOrder: 4, colorCode: '#8E9E85' },
+  { id: 'cat-5', name: 'Pastries & Food', displayOrder: 5, colorCode: '#D4C7B5' },
+  { id: 'cat-6', name: 'Retail Beans & Merch', displayOrder: 6, colorCode: '#292929' }
 ];
 
-const initialInventory: InventoryItem[] = [
-  { id: 'inv-beans-house', sku: 'RAW-BEAN-ESP', name: 'House Espresso Blend Beans', unit: 'grams', currentStock: 8500, minThreshold: 2000, costPerUnitCents: 120, updatedAt: new Date().toISOString() },
-  { id: 'inv-milk-fresh', sku: 'RAW-MILK-WHOLE', name: 'Fresh Whole Dairy Milk', unit: 'ml', currentStock: 18000, minThreshold: 4000, costPerUnitCents: 12, updatedAt: new Date().toISOString() },
-  { id: 'inv-syrup-vanilla', sku: 'RAW-SYR-VAN', name: 'Artisan Vanilla Syrup', unit: 'ml', currentStock: 3200, minThreshold: 500, costPerUnitCents: 45, updatedAt: new Date().toISOString() },
-  { id: 'inv-cups-16oz', sku: 'PKG-CUP-16', name: '16oz Biodegradable Cups', unit: 'pcs', currentStock: 450, minThreshold: 80, costPerUnitCents: 450, updatedAt: new Date().toISOString() }
-];
+const initialInventory: InventoryItem[] = [];
 
 const initialModifierGroups: ModifierGroup[] = [
   {
@@ -126,112 +122,7 @@ const initialModifierGroups: ModifierGroup[] = [
   }
 ];
 
-const initialProducts: Product[] = [
-  {
-    id: 'prod-cappuccino',
-    categoryId: 'cat-1',
-    sku: 'COF-CAP',
-    name: 'Cappuccino',
-    description: 'Entice in rich coffee with small and home made cappuccino foam.',
-    imageUrl: '/src/assets/images/cappuccino_drink_1791171598605.jpg',
-    isActive: true,
-    displayOrder: 1,
-    modifierGroupIds: ['modgrp-1', 'modgrp-2'],
-    variants: [
-      { id: 'var-cap-s', productId: 'prod-cappuccino', name: 'Small', priceCents: 15000, costPriceCents: 4500, isActive: true },
-      { id: 'var-cap-l', productId: 'prod-cappuccino', name: 'Large', priceCents: 18000, costPriceCents: 5500, isActive: true }
-    ],
-    recipes: {
-      'var-cap-s': [
-        { id: 'rec-cap-s-1', inventoryItemId: 'inv-beans-house', itemName: 'House Espresso Blend Beans', unit: 'grams', quantityRequired: 18 },
-        { id: 'rec-cap-s-2', inventoryItemId: 'inv-milk-fresh', itemName: 'Fresh Whole Dairy Milk', unit: 'ml', quantityRequired: 160 },
-        { id: 'rec-cap-s-3', inventoryItemId: 'inv-cups-16oz', itemName: '16oz Biodegradable Cups', unit: 'pcs', quantityRequired: 1 }
-      ],
-      'var-cap-l': [
-        { id: 'rec-cap-l-1', inventoryItemId: 'inv-beans-house', itemName: 'House Espresso Blend Beans', unit: 'grams', quantityRequired: 22 },
-        { id: 'rec-cap-l-2', inventoryItemId: 'inv-milk-fresh', itemName: 'Fresh Whole Dairy Milk', unit: 'ml', quantityRequired: 220 },
-        { id: 'rec-cap-l-3', inventoryItemId: 'inv-cups-16oz', itemName: '16oz Biodegradable Cups', unit: 'pcs', quantityRequired: 1 }
-      ]
-    }
-  },
-  {
-    id: 'prod-latte',
-    categoryId: 'cat-1',
-    sku: 'COF-LAT',
-    name: 'Coffee Latte',
-    description: 'Enticing coffee with sweet microfoam poured over chilled fresh milk.',
-    imageUrl: '/src/assets/images/iced_latte_drink_1791171609455.jpg',
-    isActive: true,
-    displayOrder: 2,
-    modifierGroupIds: ['modgrp-1', 'modgrp-2'],
-    variants: [
-      { id: 'var-lat-s', productId: 'prod-latte', name: 'Small', priceCents: 16000, costPriceCents: 4800, isActive: true },
-      { id: 'var-lat-l', productId: 'prod-latte', name: 'Large', priceCents: 19000, costPriceCents: 5800, isActive: true }
-    ],
-    recipes: {
-      'var-lat-s': [
-        { id: 'rec-lat-s-1', inventoryItemId: 'inv-beans-house', itemName: 'House Espresso Blend Beans', unit: 'grams', quantityRequired: 18 },
-        { id: 'rec-lat-s-2', inventoryItemId: 'inv-milk-fresh', itemName: 'Fresh Whole Dairy Milk', unit: 'ml', quantityRequired: 180 },
-        { id: 'rec-lat-s-3', inventoryItemId: 'inv-cups-16oz', itemName: '16oz Biodegradable Cups', unit: 'pcs', quantityRequired: 1 }
-      ],
-      'var-lat-l': [
-        { id: 'rec-lat-l-1', inventoryItemId: 'inv-beans-house', itemName: 'House Espresso Blend Beans', unit: 'grams', quantityRequired: 24 },
-        { id: 'rec-lat-l-2', inventoryItemId: 'inv-milk-fresh', itemName: 'Fresh Whole Dairy Milk', unit: 'ml', quantityRequired: 250 },
-        { id: 'rec-lat-l-3', inventoryItemId: 'inv-cups-16oz', itemName: '16oz Biodegradable Cups', unit: 'pcs', quantityRequired: 1 }
-      ]
-    }
-  },
-  {
-    id: 'prod-americano',
-    categoryId: 'cat-1',
-    sku: 'COF-AME',
-    name: 'Americano',
-    description: 'Fast extraction recent and clean specialty roast coffee over chilled water.',
-    imageUrl: '/src/assets/images/americano_iced_drink_1791171619230.jpg',
-    isActive: true,
-    displayOrder: 3,
-    modifierGroupIds: ['modgrp-2'],
-    variants: [
-      { id: 'var-ame-s', productId: 'prod-americano', name: 'Small', priceCents: 15500, costPriceCents: 3500, isActive: true },
-      { id: 'var-ame-l', productId: 'prod-americano', name: 'Large', priceCents: 17500, costPriceCents: 4200, isActive: true }
-    ],
-    recipes: {
-      'var-ame-s': [
-        { id: 'rec-ame-s-1', inventoryItemId: 'inv-beans-house', itemName: 'House Espresso Blend Beans', unit: 'grams', quantityRequired: 18 },
-        { id: 'rec-ame-s-2', inventoryItemId: 'inv-cups-16oz', itemName: '16oz Biodegradable Cups', unit: 'pcs', quantityRequired: 1 }
-      ],
-      'var-ame-l': [
-        { id: 'rec-ame-l-1', inventoryItemId: 'inv-beans-house', itemName: 'House Espresso Blend Beans', unit: 'grams', quantityRequired: 24 },
-        { id: 'rec-ame-l-2', inventoryItemId: 'inv-cups-16oz', itemName: '16oz Biodegradable Cups', unit: 'pcs', quantityRequired: 1 }
-      ]
-    }
-  },
-  {
-    id: 'prod-v60',
-    categoryId: 'cat-1',
-    sku: 'COF-V60',
-    name: 'V60 Pour Over',
-    description: 'High condition coffee with delicate citrus and floral finish.',
-    imageUrl: '/src/assets/images/v60_pourover_drink_1791171628952.jpg',
-    isActive: true,
-    displayOrder: 4,
-    modifierGroupIds: [],
-    variants: [
-      { id: 'var-v60-s', productId: 'prod-v60', name: 'Small', priceCents: 18000, costPriceCents: 6000, isActive: true },
-      { id: 'var-v60-l', productId: 'prod-v60', name: 'Large', priceCents: 21000, costPriceCents: 7500, isActive: true }
-    ],
-    recipes: {
-      'var-v60-s': [
-        { id: 'rec-v60-s-1', inventoryItemId: 'inv-beans-house', itemName: 'House Espresso Blend Beans', unit: 'grams', quantityRequired: 15 },
-        { id: 'rec-v60-s-2', inventoryItemId: 'inv-cups-16oz', itemName: '16oz Biodegradable Cups', unit: 'pcs', quantityRequired: 1 }
-      ],
-      'var-v60-l': [
-        { id: 'rec-v60-l-1', inventoryItemId: 'inv-beans-house', itemName: 'House Espresso Blend Beans', unit: 'grams', quantityRequired: 20 },
-        { id: 'rec-v60-l-2', inventoryItemId: 'inv-cups-16oz', itemName: '16oz Biodegradable Cups', unit: 'pcs', quantityRequired: 1 }
-      ]
-    }
-  }
-];
+const initialProducts: Product[] = [];
 const initialSuppliers: Supplier[] = [];
 
 const initialExpenseCategories: ExpenseCategory[] = [
@@ -280,13 +171,6 @@ export class LocalStorageDB {
       if (raw) {
         const parsed = JSON.parse(raw);
         if (parsed && parsed.version === DB_VERSION) {
-          if (!parsed.products || parsed.products.length === 0) {
-            parsed.products = initialProducts;
-            parsed.categories = initialCategories;
-            if (!parsed.inventoryItems || parsed.inventoryItems.length === 0) {
-              parsed.inventoryItems = initialInventory;
-            }
-          }
           return parsed;
         }
       }

@@ -89,25 +89,43 @@ export default function App() {
     }
   };
 
+  // Keyboard Shortcuts for Cashier Terminal
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'F1') {
+        e.preventDefault();
+        setCurrentModule('pos');
+      } else if (e.key === 'F2') {
+        e.preventDefault();
+        setCurrentModule('dashboard');
+      } else if (e.key === 'F3') {
+        e.preventDefault();
+        setCurrentModule('inventory');
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
+
   // FULLSCREEN TERMINAL LOCKED SCREEN
   if (isLocked) {
     return (
-      <div className="fixed inset-0 z-50 flex items-center justify-center bg-c5-espresso text-c5-cream p-4">
-        <div className="text-center space-y-4 max-w-sm w-full">
-          <div className="w-16 h-16 rounded-3xl bg-c5-cream text-c5-espresso flex items-center justify-center mx-auto shadow-2xl">
-            <Lock className="w-8 h-8" />
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#14100E] text-white p-4 select-none">
+        <div className="text-center space-y-5 max-w-sm w-full bg-stone-900 border border-stone-800 p-8 rounded-3xl shadow-2xl">
+          <div className="w-16 h-16 rounded-3xl bg-[#B4EE10] text-[#14100E] flex items-center justify-center mx-auto shadow-[0_0_25px_rgba(180,238,16,0.35)]">
+            <Lock className="w-8 h-8 stroke-[2.5]" />
           </div>
           <div>
-            <h2 className="text-2xl font-black uppercase tracking-wider text-white">
+            <h2 className="text-2xl font-black uppercase tracking-wider text-white font-display">
               C5ISR TERMINAL LOCKED
             </h2>
-            <p className="text-xs text-c5-beige/80 mt-1">
-              Enter your 4-digit staff PIN to unlock the POS terminal
+            <p className="text-xs text-stone-300 font-medium mt-1">
+              Terminal is paused. Click below to enter your 4-digit staff PIN.
             </p>
           </div>
           <button
             onClick={() => setIsLocked(false)}
-            className="w-full py-3 rounded-2xl bg-c5-sage hover:bg-c5-sage-dark text-c5-espresso font-bold text-sm shadow-md transition"
+            className="w-full py-4 rounded-2xl bg-[#B4EE10] hover:bg-[#CCFF00] text-[#14100E] font-black text-xs uppercase tracking-wider shadow-lg transition-all active:scale-95 cursor-pointer"
           >
             Enter PIN to Unlock
           </button>
@@ -125,28 +143,25 @@ export default function App() {
         currentUser={currentUser}
         activeShift={activeShift}
         lowStockCount={lowStockCount}
-        storeName={dbState.settings.storeName || 'C5ISR COFFEE SHOP'}
         onSwitchUser={() => setIsSwitchUserOpen(true)}
         onLockTerminal={() => setIsLocked(true)}
       />
 
       {/* MAIN VIEWPORT */}
       <div className="flex-1 flex flex-col h-screen overflow-hidden">
-        {/* TOP STATUS HEADER (Shown on other modules) */}
-        {currentModule !== 'pos' && (
-          <Header
-            title={moduleInfo[currentModule].title}
-            subtitle={moduleInfo[currentModule].subtitle}
-            currentUser={currentUser}
-            activeShift={activeShift}
-            settings={dbState.settings}
-            onOpenShiftModal={() => setCurrentModule('staff')}
-            onSwitchUser={() => setIsSwitchUserOpen(true)}
-          />
-        )}
+        {/* TOP STATUS HEADER */}
+        <Header
+          title={moduleInfo[currentModule].title}
+          subtitle={moduleInfo[currentModule].subtitle}
+          currentUser={currentUser}
+          activeShift={activeShift}
+          settings={dbState.settings}
+          onOpenShiftModal={() => setCurrentModule('staff')}
+          onSwitchUser={() => setIsSwitchUserOpen(true)}
+        />
 
         {/* ACTIVE MODULE CONTAINER */}
-        <main className="flex-1 overflow-hidden">
+        <main className="flex-1 overflow-hidden bg-c5-cream">
           {currentModule === 'pos' && (
             <POSView
               products={dbState.products}
@@ -168,6 +183,7 @@ export default function App() {
               onNavigateToPOS={() => setCurrentModule('pos')}
               onNavigateToInventory={() => setCurrentModule('inventory')}
               onNavigateToStaff={() => setCurrentModule('staff')}
+              onNavigateToMenu={() => setCurrentModule('menu')}
             />
           )}
 
