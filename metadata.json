@@ -1,0 +1,6 @@
+{
+  "name": "C5ISR Coffee Shop POS",
+  "description": "Modern offline-first point of sale and inventory management system for specialty coffee shops.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
