@@ -33,6 +33,7 @@ interface SidebarProps {
   activeShift: CashierShift | null;
   lowStockCount: number;
   cartCount?: number;
+  storeName?: string;
   onSwitchUser: () => void;
   onLockTerminal: () => void;
 }
@@ -44,6 +45,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   activeShift,
   lowStockCount,
   cartCount = 0,
+  storeName = 'C5ISR COFFEE SHOP',
   onSwitchUser,
   onLockTerminal
 }) => {
@@ -80,10 +82,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
             <Coffee className="w-5 h-5 fill-[#C68A57] text-[#C68A57]" />
           </div>
           <div>
-            <div className="font-extrabold text-lg tracking-tight text-[#2B2521] leading-none">
-              Purr'Coffee
+            <div className="font-extrabold text-[15px] tracking-tight text-[#2B2521] leading-tight">
+              {storeName || 'C5ISR COFFEE SHOP'}
             </div>
-            <div className="text-[10px] text-[#A59B93] font-medium tracking-wide mt-1">
+            <div className="text-[10px] text-[#A59B93] font-medium tracking-wide mt-0.5">
               Specialty Barista POS
             </div>
           </div>

@@ -125,6 +125,7 @@ export default function App() {
         currentUser={currentUser}
         activeShift={activeShift}
         lowStockCount={lowStockCount}
+        storeName={dbState.settings.storeName || 'C5ISR COFFEE SHOP'}
         onSwitchUser={() => setIsSwitchUserOpen(true)}
         onLockTerminal={() => setIsLocked(true)}
       />
