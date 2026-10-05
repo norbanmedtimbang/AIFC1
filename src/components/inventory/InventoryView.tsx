@@ -1,18 +1,15 @@
 import React, { useState } from 'react';
 import {
   Package,
-  AlertTriangle,
   Plus,
-  RefreshCw,
   History,
   TrendingDown,
   TrendingUp,
-  FileText,
-  Check,
   X
 } from 'lucide-react';
 import { InventoryItem, InventoryMovement, InventoryMovementType } from '../../types';
-import { db, formatPHP, parsePHPAmountToCents } from '../../services/storage';
+import { formatPHP, parsePHPAmountToCents } from '../../services/storage';
+import { dataService } from '../../services/dataService';
 
 interface InventoryViewProps {
   inventoryItems: InventoryItem[];
@@ -26,23 +23,23 @@ export const InventoryView: React.FC<InventoryViewProps> = ({
   onRefreshData
 }) => {
   const [activeTab, setActiveTab] = useState<'stock' | 'movements'>('stock');
-  const [filterMode, setFilterMode] = useState<'all' | 'low'>('all');
   const [searchQuery, setSearchQuery] = useState('');
+  const [filterMode, setFilterMode] = useState<'all' | 'low'>('all');
 
-  // Adjustment Modal
+  // Adjustment Modal State
   const [selectedItemForAdjust, setSelectedItemForAdjust] = useState<InventoryItem | null>(null);
   const [adjustType, setAdjustType] = useState<InventoryMovementType>('waste');
-  const [adjustQuantity, setAdjustQuantity] = useState<string>('0');
-  const [adjustNotes, setAdjustNotes] = useState<string>('');
+  const [adjustQuantity, setAdjustQuantity] = useState('0');
+  const [adjustNotes, setAdjustNotes] = useState('');
 
-  // New Item Modal
+  // Add Item Modal State
   const [isNewItemModalOpen, setIsNewItemModalOpen] = useState(false);
   const [newItemName, setNewItemName] = useState('');
   const [newItemSku, setNewItemSku] = useState('');
   const [newItemUnit, setNewItemUnit] = useState<InventoryItem['unit']>('grams');
-  const [newItemStock, setNewItemStock] = useState('0');
-  const [newItemThreshold, setNewItemThreshold] = useState('100');
-  const [newItemCostCents, setNewItemCostCents] = useState('100');
+  const [newItemStock, setNewItemStock] = useState('1000');
+  const [newItemThreshold, setNewItemThreshold] = useState('200');
+  const [newItemCostCents, setNewItemCostCents] = useState('50');
 
   // Filtered Items
   const filteredItems = inventoryItems.filter(item => {
@@ -61,7 +58,7 @@ export const InventoryView: React.FC<InventoryViewProps> = ({
   );
 
   // Commit Adjustment
-  const handleCommitAdjustment = () => {
+  const handleCommitAdjustment = async () => {
     if (!selectedItemForAdjust) return;
     const qty = parseFloat(adjustQuantity);
     if (isNaN(qty) || qty === 0) {
@@ -73,24 +70,27 @@ export const InventoryView: React.FC<InventoryViewProps> = ({
       return;
     }
 
-    // Negative for waste / spill
     const delta = adjustType === 'waste' || adjustType === 'spill' ? -Math.abs(qty) : qty;
 
-    db.adjustInventoryStock(
-      selectedItemForAdjust.id,
-      adjustType as any,
-      delta,
-      adjustNotes.trim()
-    );
+    try {
+      await dataService.adjustInventoryStock(
+        selectedItemForAdjust.id,
+        adjustType as any,
+        delta,
+        adjustNotes.trim()
+      );
 
-    setSelectedItemForAdjust(null);
-    setAdjustQuantity('0');
-    setAdjustNotes('');
-    onRefreshData();
+      setSelectedItemForAdjust(null);
+      setAdjustQuantity('0');
+      setAdjustNotes('');
+      onRefreshData();
+    } catch (err) {
+      alert('Inventory adjustment failed: ' + (err as Error).message);
+    }
   };
 
   // Add Item
-  const handleAddNewItem = () => {
+  const handleAddNewItem = async () => {
     if (!newItemName.trim()) {
       alert('Please enter an item name.');
       return;
@@ -106,64 +106,61 @@ export const InventoryView: React.FC<InventoryViewProps> = ({
       updatedAt: new Date().toISOString()
     };
 
-    db.saveInventoryItem(item);
-    setIsNewItemModalOpen(false);
-    setNewItemName('');
-    setNewItemSku('');
-    setNewItemStock('0');
-    onRefreshData();
+    try {
+      await dataService.saveInventoryItem(item);
+      setIsNewItemModalOpen(false);
+      setNewItemName('');
+      setNewItemSku('');
+      setNewItemStock('0');
+      onRefreshData();
+    } catch (err) {
+      alert('Failed to save inventory item: ' + (err as Error).message);
+    }
   };
 
   return (
-    <div className="p-6 space-y-6 max-w-7xl mx-auto overflow-y-auto">
-      {/* Top Header & Valuation Summary */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-c5-beige pb-4">
+    <div className="p-6 md:p-8 space-y-6 max-w-6xl mx-auto overflow-y-auto">
+      {/* Top Header & Valuation */}
+      <div className="flex flex-col sm:flex-row sm:items-baseline justify-between gap-4 border-b border-[#E8E2D9] pb-4">
         <div>
-          <div className="flex items-center gap-2">
-            <h2 className="text-xl font-bold text-c5-charcoal">Raw Materials & Inventory</h2>
-            {lowStockCount > 0 && (
-              <span className="px-2 py-0.5 rounded-full bg-rose-100 text-rose-800 text-[11px] font-bold">
-                {lowStockCount} items low
-              </span>
-            )}
-          </div>
-          <p className="text-xs text-c5-charcoal-muted mt-0.5">
-            Total Inventory Valuation: <strong className="text-c5-espresso font-mono">{formatPHP(totalInventoryValuationCents)}</strong>
+          <h1 className="text-xl font-bold text-[#292929]">Inventory & Materials</h1>
+          <p className="text-xs text-[#7A736C] mt-0.5">
+            Total Valuation: <span className="font-mono font-medium text-[#292929]">{formatPHP(totalInventoryValuationCents)}</span>
           </p>
         </div>
 
         {/* Action Controls */}
         <div className="flex items-center gap-2">
-          <div className="flex items-center gap-1 bg-c5-cream p-1 rounded-xl border border-c5-beige">
+          <div className="flex items-center gap-1 bg-[#F7F3EB] p-1 rounded-xl border border-[#E8E2D9]">
             <button
               onClick={() => setActiveTab('stock')}
-              className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold transition ${
+              className={`px-3 py-1.5 rounded-lg text-xs font-medium transition cursor-pointer ${
                 activeTab === 'stock'
-                  ? 'bg-c5-espresso text-c5-cream shadow-xs'
-                  : 'text-c5-charcoal hover:text-black'
+                  ? 'bg-[#3B2925] text-white shadow-xs'
+                  : 'text-[#6E6862] hover:text-[#292929]'
               }`}
             >
-              Stock Table ({inventoryItems.length})
+              Stock Items ({inventoryItems.length})
             </button>
             <button
               onClick={() => setActiveTab('movements')}
-              className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold transition flex items-center gap-1 ${
+              className={`px-3 py-1.5 rounded-lg text-xs font-medium transition flex items-center gap-1 cursor-pointer ${
                 activeTab === 'movements'
-                  ? 'bg-c5-espresso text-c5-cream shadow-xs'
-                  : 'text-c5-charcoal hover:text-black'
+                  ? 'bg-[#3B2925] text-white shadow-xs'
+                  : 'text-[#6E6862] hover:text-[#292929]'
               }`}
             >
               <History className="w-3.5 h-3.5" />
-              <span>Audit Ledger ({inventoryMovements.length})</span>
+              <span>Audit Ledger</span>
             </button>
           </div>
 
           <button
             onClick={() => setIsNewItemModalOpen(true)}
-            className="px-4 py-2 rounded-xl bg-c5-espresso text-c5-cream hover:bg-c5-espresso-dark text-xs font-bold transition flex items-center gap-1.5 shadow-xs"
+            className="px-3.5 py-2 rounded-xl bg-[#3B2925] hover:bg-[#2C1E1A] text-white text-xs font-medium transition flex items-center gap-1.5 shadow-xs cursor-pointer"
           >
-            <Plus className="w-4 h-4" />
-            <span>Add Item</span>
+            <Plus className="w-3.5 h-3.5" />
+            <span>Add Material</span>
           </button>
         </div>
       </div>
@@ -174,94 +171,84 @@ export const InventoryView: React.FC<InventoryViewProps> = ({
           <div className="flex flex-col sm:flex-row items-center justify-between gap-3">
             <input
               type="text"
-              placeholder="Search by ingredient, packaging or SKU..."
+              placeholder="Search ingredient or code..."
               value={searchQuery}
               onChange={e => setSearchQuery(e.target.value)}
-              className="w-full sm:w-80 bg-white border border-c5-beige rounded-xl px-3.5 py-2 text-xs text-c5-charcoal outline-hidden focus:border-c5-espresso"
+              className="w-full sm:w-72 bg-white border border-[#E8E2D9] rounded-xl px-3 py-1.5 text-xs text-[#292929] outline-hidden focus:border-[#3B2925]"
             />
 
             <div className="flex items-center gap-2 self-start sm:self-auto">
               <button
                 onClick={() => setFilterMode('all')}
-                className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition ${
+                className={`px-3 py-1 rounded-lg text-xs font-medium transition cursor-pointer ${
                   filterMode === 'all'
-                    ? 'bg-c5-espresso text-c5-cream'
-                    : 'bg-white border border-c5-beige text-c5-charcoal hover:bg-c5-cream'
+                    ? 'bg-[#3B2925] text-white shadow-xs'
+                    : 'bg-white border border-[#E8E2D9] text-[#6E6862] hover:bg-[#F7F3EB]'
                 }`}
               >
-                All Items ({inventoryItems.length})
+                All Items
               </button>
               <button
                 onClick={() => setFilterMode('low')}
-                className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition flex items-center gap-1.5 ${
+                className={`px-3 py-1 rounded-lg text-xs font-medium transition cursor-pointer ${
                   filterMode === 'low'
-                    ? 'bg-rose-700 text-white'
-                    : 'bg-white border border-c5-beige text-rose-700 hover:bg-rose-50'
+                    ? 'bg-[#3B2925] text-white shadow-xs'
+                    : 'bg-white border border-[#E8E2D9] text-[#6E6862] hover:bg-[#F7F3EB]'
                 }`}
               >
-                <AlertTriangle className="w-3.5 h-3.5" />
-                <span>Low Stock ({lowStockCount})</span>
+                Low Stock ({lowStockCount})
               </button>
             </div>
           </div>
 
-          {/* Table */}
-          <div className="bg-white rounded-2xl border border-c5-beige overflow-hidden shadow-xs">
+          {/* Clean Table */}
+          <div className="bg-white rounded-xl border border-[#E8E2D9] overflow-hidden">
             <table className="w-full text-left text-xs">
-              <thead className="bg-c5-cream/60 border-b border-c5-beige text-c5-charcoal-muted uppercase text-[10px] font-bold tracking-wider">
+              <thead className="bg-[#FBF9F5] border-b border-[#E8E2D9] text-[#7A736C]">
                 <tr>
-                  <th className="py-3 px-4">Raw Item / SKU</th>
-                  <th className="py-3 px-4">Current Stock</th>
-                  <th className="py-3 px-4">Min. Threshold</th>
-                  <th className="py-3 px-4">Unit Cost (Est.)</th>
-                  <th className="py-3 px-4 text-center">Health Status</th>
-                  <th className="py-3 px-4 text-right">Adjustment</th>
+                  <th className="py-2.5 px-4 font-medium">Material Name</th>
+                  <th className="py-2.5 px-4 font-medium">Current Stock</th>
+                  <th className="py-2.5 px-4 font-medium">Reorder Level</th>
+                  <th className="py-2.5 px-4 font-medium">Unit Cost</th>
+                  <th className="py-2.5 px-4 font-medium text-center">Status</th>
+                  <th className="py-2.5 px-4 font-medium text-right">Action</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-c5-beige/60">
+              <tbody className="divide-y divide-[#F7F3EB]">
                 {filteredItems.map(item => {
                   const isLow = item.currentStock <= item.minThreshold;
                   return (
-                    <tr key={item.id} className="hover:bg-c5-cream/20 transition">
+                    <tr key={item.id} className="hover:bg-[#FAF7F2] transition">
                       <td className="py-3 px-4">
-                        <div className="font-bold text-c5-charcoal">{item.name}</div>
-                        <div className="text-[10px] font-mono text-c5-charcoal-light">
-                          {item.sku || 'RAW-MAT'}
-                        </div>
+                        <div className="font-medium text-[#292929]">{item.name}</div>
+                        {item.sku && (
+                          <div className="text-[10px] font-mono text-[#9B948C]">
+                            {item.sku}
+                          </div>
+                        )}
                       </td>
                       <td className="py-3 px-4">
-                        <span
-                          className={`font-mono text-sm font-black ${
-                            isLow ? 'text-rose-700' : 'text-c5-charcoal'
-                          }`}
-                        >
-                          {item.currentStock.toLocaleString('en-US', {
-                            maximumFractionDigits: 1
-                          })}
+                        <span className={`font-mono font-medium ${isLow ? 'text-[#A25035]' : 'text-[#292929]'}`}>
+                          {item.currentStock.toLocaleString('en-US', { maximumFractionDigits: 1 })}
                         </span>{' '}
-                        <span className="text-[11px] text-c5-charcoal-muted uppercase font-semibold">
-                          {item.unit}
-                        </span>
+                        <span className="text-[11px] text-[#7A736C]">{item.unit}</span>
                       </td>
-                      <td className="py-3 px-4">
-                        <span className="font-mono text-c5-charcoal-muted">
-                          {item.minThreshold} {item.unit}
-                        </span>
+                      <td className="py-3 px-4 text-[#7A736C] font-mono">
+                        {item.minThreshold} {item.unit}
                       </td>
-                      <td className="py-3 px-4">
-                        <span className="font-mono text-c5-charcoal">
-                          {formatPHP(item.costPerUnitCents)} / {item.unit}
-                        </span>
+                      <td className="py-3 px-4 font-mono text-[#292929]">
+                        {formatPHP(item.costPerUnitCents)} / {item.unit}
                       </td>
                       <td className="py-3 px-4 text-center">
-                        <span
-                          className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase ${
-                            isLow
-                              ? 'bg-rose-100 text-rose-800'
-                              : 'bg-emerald-100 text-emerald-800'
-                          }`}
-                        >
-                          {isLow ? 'Low Stock' : 'Optimal'}
+                        <span className="inline-flex items-center gap-1.5 text-xs">
+                          <span
+                            className={`w-1.5 h-1.5 rounded-full ${
+                              isLow ? 'bg-[#A25035]' : 'bg-[#A8B5A0]'
+                            }`}
+                          />
+                          <span className="text-[#6E6862]">
+                            {isLow ? 'Low Stock' : 'Optimal'}
+                          </span>
                         </span>
                       </td>
                       <td className="py-3 px-4 text-right">
@@ -272,9 +259,9 @@ export const InventoryView: React.FC<InventoryViewProps> = ({
                             setAdjustQuantity('0');
                             setAdjustNotes('');
                           }}
-                          className="px-3 py-1.5 rounded-lg bg-c5-cream border border-c5-beige hover:bg-c5-beige text-c5-charcoal font-semibold text-xs transition"
+                          className="px-2.5 py-1 rounded-lg bg-white border border-[#E8E2D9] hover:bg-[#F7F3EB] text-[#292929] text-xs font-medium transition cursor-pointer"
                         >
-                          Adjust / Spill
+                          Adjust
                         </button>
                       </td>
                     </tr>
@@ -288,63 +275,57 @@ export const InventoryView: React.FC<InventoryViewProps> = ({
 
       {/* MOVEMENTS AUDIT LEDGER TAB */}
       {activeTab === 'movements' && (
-        <div className="bg-white rounded-2xl border border-c5-beige overflow-hidden shadow-xs">
-          <div className="p-4 bg-c5-cream/40 border-b border-c5-beige flex items-center justify-between">
-            <h4 className="font-bold text-xs text-c5-charcoal uppercase tracking-wider">
-              Automated Inventory Movement Audit Trail
+        <div className="bg-white rounded-xl border border-[#E8E2D9] overflow-hidden">
+          <div className="p-3.5 bg-[#FBF9F5] border-b border-[#E8E2D9] flex items-center justify-between">
+            <h4 className="text-xs font-medium text-[#292929]">
+              Inventory Movement Audit Trail
             </h4>
-            <span className="text-[11px] text-c5-charcoal-muted">
-              Auto-deducted from sales recipes, purchases, and manual spills
+            <span className="text-[11px] text-[#7A736C]">
+              Auto-logged from sales, recipes, and manual adjustments
             </span>
           </div>
 
-          <div className="divide-y divide-c5-beige/60 max-h-[600px] overflow-y-auto">
+          <div className="divide-y divide-[#F7F3EB] max-h-[550px] overflow-y-auto">
             {inventoryMovements.length === 0 ? (
-              <p className="p-8 text-center text-xs text-c5-charcoal-muted">
-                No inventory deductions logged yet. Complete sales in the POS to see automatic recipe deductions.
+              <p className="p-8 text-center text-xs text-[#9B948C]">
+                No inventory deductions logged yet.
               </p>
             ) : (
               inventoryMovements.map(m => (
-                <div key={m.id} className="p-3.5 flex items-center justify-between text-xs hover:bg-c5-cream/20">
+                <div key={m.id} className="p-3 flex items-center justify-between text-xs hover:bg-[#FAF7F2]">
                   <div className="flex items-center gap-3">
                     <div
-                      className={`w-8 h-8 rounded-lg flex items-center justify-center font-bold text-xs ${
+                      className={`w-7 h-7 rounded-lg flex items-center justify-center font-bold text-xs ${
                         m.quantityDelta < 0
-                          ? 'bg-rose-100 text-rose-700'
-                          : 'bg-emerald-100 text-emerald-700'
+                          ? 'bg-stone-100 text-[#7A736C]'
+                          : 'bg-[#F7F3EB] text-[#3B2925]'
                       }`}
                     >
-                      {m.quantityDelta < 0 ? <TrendingDown className="w-4 h-4" /> : <TrendingUp className="w-4 h-4" />}
+                      {m.quantityDelta < 0 ? <TrendingDown className="w-3.5 h-3.5" /> : <TrendingUp className="w-3.5 h-3.5" />}
                     </div>
                     <div>
                       <div className="flex items-center gap-2">
-                        <span className="font-bold text-c5-charcoal">{m.itemName}</span>
-                        <span className="px-1.5 py-0.2 rounded text-[10px] uppercase font-bold bg-c5-beige/60 text-c5-charcoal">
-                          {m.type.replace('_', ' ')}
+                        <span className="font-medium text-[#292929]">{m.itemName}</span>
+                        <span className="text-[10px] text-[#7A736C] capitalize">
+                          ({m.type.replace('_', ' ')})
                         </span>
                       </div>
-                      <p className="text-[10px] text-c5-charcoal-muted mt-0.5">
-                        {m.notes || 'Routine transaction'} • By {m.createdBy} •{' '}
-                        {new Date(m.createdAt).toLocaleString([], {
-                          month: 'short',
-                          day: 'numeric',
-                          hour: '2-digit',
-                          minute: '2-digit'
-                        })}
+                      <p className="text-[10px] text-[#7A736C] mt-0.5">
+                        {m.notes || 'Routine deduction'} · {new Date(m.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                       </p>
                     </div>
                   </div>
                   <div className="text-right">
                     <span
-                      className={`font-mono font-bold text-sm ${
-                        m.quantityDelta < 0 ? 'text-rose-700' : 'text-emerald-700'
+                      className={`font-mono font-medium ${
+                        m.quantityDelta < 0 ? 'text-[#A25035]' : 'text-[#6B8E5F]'
                       }`}
                     >
                       {m.quantityDelta > 0 ? '+' : ''}
                       {m.quantityDelta.toFixed(1)}
                     </span>
-                    <span className="block text-[10px] text-c5-charcoal-muted font-mono">
-                      Balance: {m.balanceAfter.toFixed(1)}
+                    <span className="block text-[10px] text-[#9B948C] font-mono">
+                      Bal: {m.balanceAfter.toFixed(1)}
                     </span>
                   </div>
                 </div>
@@ -354,45 +335,47 @@ export const InventoryView: React.FC<InventoryViewProps> = ({
         </div>
       )}
 
-      {/* ADJUST / SPILL MODAL */}
+      {/* ADJUSTMENT MODAL */}
       {selectedItemForAdjust && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4">
-          <div className="w-full max-w-md bg-white rounded-2xl shadow-2xl border border-c5-beige overflow-hidden">
-            <div className="bg-c5-espresso text-c5-cream p-5 flex items-center justify-between">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-2xs p-4">
+          <div className="w-full max-w-md bg-white rounded-2xl shadow-xl border border-[#E8E2D9] overflow-hidden">
+            <div className="p-4 border-b border-[#E8E2D9] flex items-center justify-between">
               <div>
-                <h3 className="font-bold text-base">Adjust Stock: {selectedItemForAdjust.name}</h3>
-                <p className="text-xs text-c5-beige mt-0.5">
-                  Current Stock: {selectedItemForAdjust.currentStock} {selectedItemForAdjust.unit}
+                <h3 className="text-sm font-semibold text-[#292929]">
+                  Adjust Stock: {selectedItemForAdjust.name}
+                </h3>
+                <p className="text-xs text-[#7A736C] mt-0.5">
+                  Current Balance: {selectedItemForAdjust.currentStock} {selectedItemForAdjust.unit}
                 </p>
               </div>
               <button
                 onClick={() => setSelectedItemForAdjust(null)}
-                className="p-1 rounded-lg hover:bg-white/10 text-c5-beige hover:text-white"
+                className="p-1 rounded-lg text-[#7A736C] hover:text-[#292929] cursor-pointer"
               >
-                ✕
+                <X className="w-4 h-4" />
               </button>
             </div>
 
-            <div className="p-6 space-y-4">
+            <div className="p-5 space-y-4 text-xs">
               <div>
-                <label className="text-xs font-bold uppercase tracking-wider text-c5-charcoal block mb-1">
-                  Adjustment Type
+                <label className="text-xs font-medium text-[#292929] block mb-1.5">
+                  Reason for Adjustment
                 </label>
-                <div className="grid grid-cols-2 gap-2">
+                <div className="grid grid-cols-2 gap-1.5">
                   {[
                     { id: 'waste', label: 'Waste / Expired' },
-                    { id: 'spill', label: 'Spill / Dial-in Shot' },
-                    { id: 'count_adjustment', label: 'Audit Adjustment' },
+                    { id: 'spill', label: 'Spill / Dial-in' },
+                    { id: 'count_adjustment', label: 'Count Audit' },
                     { id: 'purchase', label: 'Manual Restock' }
                   ].map(t => (
                     <button
                       key={t.id}
                       type="button"
                       onClick={() => setAdjustType(t.id as any)}
-                      className={`p-2 rounded-xl border text-xs font-semibold text-center transition ${
+                      className={`p-2 rounded-lg border text-xs font-medium text-center transition cursor-pointer ${
                         adjustType === t.id
-                          ? 'bg-c5-espresso text-c5-cream border-c5-espresso'
-                          : 'border-c5-beige hover:bg-c5-cream text-c5-charcoal'
+                          ? 'bg-[#3B2925] text-white border-[#3B2925] shadow-xs'
+                          : 'border-[#E8E2D9] hover:bg-[#FAF7F2] text-[#6E6862]'
                       }`}
                     >
                       {t.label}
@@ -402,46 +385,45 @@ export const InventoryView: React.FC<InventoryViewProps> = ({
               </div>
 
               <div>
-                <label className="text-xs font-bold uppercase tracking-wider text-c5-charcoal block mb-1">
-                  Quantity ({selectedItemForAdjust.unit})
+                <label className="text-xs font-medium text-[#292929] block mb-1">
+                  Quantity to adjust ({selectedItemForAdjust.unit})
                 </label>
                 <input
                   type="number"
                   step="0.1"
                   value={adjustQuantity}
                   onChange={e => setAdjustQuantity(e.target.value)}
-                  placeholder="e.g. 50 or 500"
-                  className="w-full bg-white border border-c5-beige rounded-xl px-3 py-2 text-sm font-bold font-mono text-c5-charcoal outline-hidden focus:border-c5-espresso"
+                  placeholder="e.g. 50"
+                  className="w-full bg-white border border-[#E8E2D9] rounded-xl px-3 py-1.5 font-mono text-sm text-[#292929] outline-hidden focus:border-[#3B2925]"
                 />
               </div>
 
               <div>
-                <label className="text-xs font-bold uppercase tracking-wider text-c5-charcoal block mb-1">
+                <label className="text-xs font-medium text-[#292929] block mb-1">
                   Reason / Notes *
                 </label>
                 <input
                   type="text"
-                  placeholder="e.g. Grinder calibration dial-in waste, milk spilled on counter"
+                  placeholder="e.g. Grinder calibration dial-in"
                   value={adjustNotes}
                   onChange={e => setAdjustNotes(e.target.value)}
-                  className="w-full bg-white border border-c5-beige rounded-xl px-3 py-2 text-xs text-c5-charcoal outline-hidden focus:border-c5-espresso"
+                  className="w-full bg-white border border-[#E8E2D9] rounded-xl px-3 py-1.5 text-xs text-[#292929] outline-hidden focus:border-[#3B2925]"
                 />
               </div>
             </div>
 
-            <div className="p-4 bg-c5-cream/40 border-t border-c5-beige flex justify-end gap-3">
+            <div className="p-4 bg-[#FBF9F5] border-t border-[#E8E2D9] flex justify-end gap-2">
               <button
                 onClick={() => setSelectedItemForAdjust(null)}
-                className="px-4 py-2 rounded-xl text-xs font-semibold text-c5-charcoal hover:bg-c5-beige transition"
+                className="px-4 py-2 rounded-xl text-xs font-medium text-[#6E6862] hover:bg-[#EFE9DF] cursor-pointer"
               >
                 Cancel
               </button>
               <button
                 onClick={handleCommitAdjustment}
-                className="px-5 py-2.5 rounded-xl text-xs font-bold bg-c5-espresso text-c5-cream hover:bg-c5-espresso-dark transition shadow-xs flex items-center gap-1.5"
+                className="px-4 py-2 rounded-xl text-xs font-medium bg-[#3B2925] text-white hover:bg-[#2C1E1A] cursor-pointer shadow-xs"
               >
-                <Check className="w-4 h-4" />
-                <span>Save Adjustment</span>
+                Save Adjustment
               </button>
             </div>
           </div>
@@ -450,58 +432,58 @@ export const InventoryView: React.FC<InventoryViewProps> = ({
 
       {/* NEW ITEM MODAL */}
       {isNewItemModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4">
-          <div className="w-full max-w-md bg-white rounded-2xl shadow-2xl border border-c5-beige overflow-hidden">
-            <div className="bg-c5-espresso text-c5-cream p-5 flex items-center justify-between">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-2xs p-4">
+          <div className="w-full max-w-md bg-white rounded-2xl shadow-xl border border-[#E8E2D9] overflow-hidden">
+            <div className="p-4 border-b border-[#E8E2D9] flex items-center justify-between">
               <div>
-                <h3 className="font-bold text-base">Add New Inventory Material</h3>
-                <p className="text-xs text-c5-beige mt-0.5">
-                  Register beans, dairy, syrups, or packaging cups
+                <h3 className="text-sm font-semibold text-[#292929]">Add New Material</h3>
+                <p className="text-xs text-[#7A736C] mt-0.5">
+                  Register coffee beans, milk, syrups, or cups
                 </p>
               </div>
               <button
                 onClick={() => setIsNewItemModalOpen(false)}
-                className="p-1 rounded-lg hover:bg-white/10 text-c5-beige hover:text-white"
+                className="p-1 rounded-lg text-[#7A736C] hover:text-[#292929] cursor-pointer"
               >
-                ✕
+                <X className="w-4 h-4" />
               </button>
             </div>
 
-            <div className="p-6 space-y-4">
+            <div className="p-5 space-y-3.5 text-xs">
               <div>
-                <label className="text-xs font-bold uppercase tracking-wider text-c5-charcoal block mb-1">
+                <label className="text-xs font-medium text-[#292929] block mb-1">
                   Item Name *
                 </label>
                 <input
                   type="text"
-                  placeholder="e.g. Colombian Supremo Beans, 8oz Hot Cups"
+                  placeholder="e.g. House Espresso Beans"
                   value={newItemName}
                   onChange={e => setNewItemName(e.target.value)}
-                  className="w-full bg-white border border-c5-beige rounded-xl px-3 py-2 text-xs text-c5-charcoal outline-hidden focus:border-c5-espresso"
+                  className="w-full bg-white border border-[#E8E2D9] rounded-xl px-3 py-1.5 text-xs text-[#292929] outline-hidden focus:border-[#3B2925]"
                 />
               </div>
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="text-xs font-bold uppercase tracking-wider text-c5-charcoal block mb-1">
+                  <label className="text-xs font-medium text-[#292929] block mb-1">
                     SKU Code
                   </label>
                   <input
                     type="text"
-                    placeholder="RAW-MAT-01"
+                    placeholder="RAW-01"
                     value={newItemSku}
                     onChange={e => setNewItemSku(e.target.value)}
-                    className="w-full bg-white border border-c5-beige rounded-xl px-3 py-2 text-xs font-mono text-c5-charcoal outline-hidden focus:border-c5-espresso"
+                    className="w-full bg-white border border-[#E8E2D9] rounded-xl px-3 py-1.5 text-xs font-mono text-[#292929] outline-hidden focus:border-[#3B2925]"
                   />
                 </div>
                 <div>
-                  <label className="text-xs font-bold uppercase tracking-wider text-c5-charcoal block mb-1">
+                  <label className="text-xs font-medium text-[#292929] block mb-1">
                     Unit of Measure
                   </label>
                   <select
                     value={newItemUnit}
                     onChange={e => setNewItemUnit(e.target.value as any)}
-                    className="w-full bg-white border border-c5-beige rounded-xl px-3 py-2 text-xs text-c5-charcoal outline-hidden focus:border-c5-espresso"
+                    className="w-full bg-white border border-[#E8E2D9] rounded-xl px-3 py-1.5 text-xs text-[#292929] outline-hidden focus:border-[#3B2925]"
                   >
                     <option value="grams">grams (g)</option>
                     <option value="ml">milliliters (ml)</option>
@@ -515,43 +497,42 @@ export const InventoryView: React.FC<InventoryViewProps> = ({
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="text-xs font-bold uppercase tracking-wider text-c5-charcoal block mb-1">
+                  <label className="text-xs font-medium text-[#292929] block mb-1">
                     Initial Stock
                   </label>
                   <input
                     type="number"
                     value={newItemStock}
                     onChange={e => setNewItemStock(e.target.value)}
-                    className="w-full bg-white border border-c5-beige rounded-xl px-3 py-2 text-xs font-mono text-c5-charcoal"
+                    className="w-full bg-white border border-[#E8E2D9] rounded-xl px-3 py-1.5 text-xs font-mono text-[#292929]"
                   />
                 </div>
                 <div>
-                  <label className="text-xs font-bold uppercase tracking-wider text-c5-charcoal block mb-1">
-                    Min Reorder Point
+                  <label className="text-xs font-medium text-[#292929] block mb-1">
+                    Reorder Threshold
                   </label>
                   <input
                     type="number"
                     value={newItemThreshold}
                     onChange={e => setNewItemThreshold(e.target.value)}
-                    className="w-full bg-white border border-c5-beige rounded-xl px-3 py-2 text-xs font-mono text-c5-charcoal"
+                    className="w-full bg-white border border-[#E8E2D9] rounded-xl px-3 py-1.5 text-xs font-mono text-[#292929]"
                   />
                 </div>
               </div>
             </div>
 
-            <div className="p-4 bg-c5-cream/40 border-t border-c5-beige flex justify-end gap-3">
+            <div className="p-4 bg-[#FBF9F5] border-t border-[#E8E2D9] flex justify-end gap-2">
               <button
                 onClick={() => setIsNewItemModalOpen(false)}
-                className="px-4 py-2 rounded-xl text-xs font-semibold text-c5-charcoal hover:bg-c5-beige transition"
+                className="px-4 py-2 rounded-xl text-xs font-medium text-[#6E6862] hover:bg-[#EFE9DF] cursor-pointer"
               >
                 Cancel
               </button>
               <button
                 onClick={handleAddNewItem}
-                className="px-5 py-2.5 rounded-xl text-xs font-bold bg-c5-espresso text-c5-cream hover:bg-c5-espresso-dark transition shadow-xs flex items-center gap-1.5"
+                className="px-4 py-2 rounded-xl text-xs font-medium bg-[#3B2925] text-white hover:bg-[#2C1E1A] cursor-pointer shadow-xs"
               >
-                <Plus className="w-4 h-4" />
-                <span>Create Material</span>
+                Save Material
               </button>
             </div>
           </div>

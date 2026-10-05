@@ -159,6 +159,21 @@ CREATE TABLE public.sale_items (
     notes TEXT
 );
 
+-- 13. STORE EXPENSES
+CREATE TABLE IF NOT EXISTS public.expenses (
+    id TEXT PRIMARY KEY,
+    category_id TEXT NOT NULL,
+    category_name TEXT NOT NULL,
+    shift_id TEXT REFERENCES public.cashier_shifts(id) ON DELETE SET NULL,
+    user_id TEXT NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
+    user_name TEXT NOT NULL,
+    amount_cents BIGINT NOT NULL,
+    payee TEXT NOT NULL,
+    description TEXT NOT NULL,
+    receipt_reference TEXT,
+    created_at TIMESTAMPTZ DEFAULT TIMEZONE('utc', NOW())
+);
+
 -- ==============================================================================
 -- ROW LEVEL SECURITY (RLS) POLICIES
 -- Default: Enable RLS and grant read/write access to anon/authenticated client
@@ -174,6 +189,7 @@ ALTER TABLE public.recipes ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.inventory_movements ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.sales ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.sale_items ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.expenses ENABLE ROW LEVEL SECURITY;
 
 -- Allow anon & authenticated roles full access for POS operations
 DO $$ 

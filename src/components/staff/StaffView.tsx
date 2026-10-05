@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 import { User, CashierShift, CashMovement, Sale, Expense } from '../../types';
 import { db, formatPHP, parsePHPAmountToCents } from '../../services/storage';
+import { dataService } from '../../services/dataService';
 
 interface StaffViewProps {
   users: User[];
@@ -91,19 +92,23 @@ export const StaffView: React.FC<StaffViewProps> = ({
     : 0;
 
   // Open Shift
-  const handleOpenShift = () => {
+  const handleOpenShift = async () => {
     const floatPHP = parseFloat(openingFloatInput);
     if (isNaN(floatPHP) || floatPHP < 0) {
       alert('Please enter a valid opening float.');
       return;
     }
-    db.openShift(parsePHPAmountToCents(floatPHP), openingNotes.trim() || undefined);
-    setIsOpenShiftModalOpen(false);
-    onRefreshData();
+    try {
+      await dataService.openShift(parsePHPAmountToCents(floatPHP), openingNotes.trim() || undefined);
+      setIsOpenShiftModalOpen(false);
+      onRefreshData();
+    } catch (err) {
+      alert('Failed to open shift: ' + (err as Error).message);
+    }
   };
 
   // Cash In / Cash Out
-  const handleRecordCashMovement = () => {
+  const handleRecordCashMovement = async () => {
     const amountPHP = parseFloat(movementAmountInput);
     if (isNaN(amountPHP) || amountPHP <= 0) {
       alert('Please enter a valid amount.');
@@ -114,26 +119,34 @@ export const StaffView: React.FC<StaffViewProps> = ({
       return;
     }
 
-    db.recordCashMovement(movementType, parsePHPAmountToCents(amountPHP), movementReason.trim());
-    setIsCashMovementModalOpen(false);
-    setMovementAmountInput('');
-    setMovementReason('');
-    onRefreshData();
+    try {
+      await dataService.addCashMovement(movementType, parsePHPAmountToCents(amountPHP), movementReason.trim());
+      setIsCashMovementModalOpen(false);
+      setMovementAmountInput('');
+      setMovementReason('');
+      onRefreshData();
+    } catch (err) {
+      alert('Failed to record cash movement: ' + (err as Error).message);
+    }
   };
 
   // Close Shift
-  const handleCloseShift = () => {
+  const handleCloseShift = async () => {
     const countedPHP = parseFloat(countedCashInput);
     if (isNaN(countedPHP) || countedPHP < 0) {
       alert('Please enter the counted cash.');
       return;
     }
 
-    db.closeShift(parsePHPAmountToCents(countedPHP), closingNotes.trim() || undefined);
-    setIsCloseShiftModalOpen(false);
-    setCountedCashInput('');
-    setClosingNotes('');
-    onRefreshData();
+    try {
+      await dataService.closeShift(parsePHPAmountToCents(countedPHP), closingNotes.trim() || undefined);
+      setIsCloseShiftModalOpen(false);
+      setCountedCashInput('');
+      setClosingNotes('');
+      onRefreshData();
+    } catch (err) {
+      alert('Failed to close shift: ' + (err as Error).message);
+    }
   };
 
   // Add User

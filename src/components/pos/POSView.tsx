@@ -10,11 +10,9 @@ import {
   Smartphone,
   Tag,
   AlertTriangle,
-  RotateCcw,
-  Sparkles,
   Coffee,
-  CheckCircle2,
-  ChevronRight
+  X,
+  Loader2
 } from 'lucide-react';
 import {
   Product,
@@ -29,7 +27,8 @@ import {
   CashierShift,
   User
 } from '../../types';
-import { db, formatPHP } from '../../services/storage';
+import { formatPHP } from '../../services/storage';
+import { dataService } from '../../services/dataService';
 import { ThermalReceiptModal } from '../shared/ThermalReceiptModal';
 
 interface POSViewProps {
@@ -38,9 +37,9 @@ interface POSViewProps {
   modifierGroups: ModifierGroup[];
   settings: ShopSettings;
   currentUser?: User;
-  activeShift: CashierShift | null;
+  activeShift?: CashierShift | null;
   onRefreshData: () => void;
-  onOpenShiftModal: () => void;
+  onOpenShiftModal?: () => void;
 }
 
 export const POSView: React.FC<POSViewProps> = ({
@@ -48,12 +47,13 @@ export const POSView: React.FC<POSViewProps> = ({
   categories,
   modifierGroups,
   settings,
-  activeShift,
-  onRefreshData,
-  onOpenShiftModal
+  onRefreshData
 }) => {
+  // Category & Search State
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState<string>('');
+
+  // Cart State
   const [cart, setCart] = useState<CartItem[]>([]);
   const [orderType, setOrderType] = useState<OrderType>('dine_in');
   const [customerName, setCustomerName] = useState<string>('');
@@ -64,7 +64,7 @@ export const POSView: React.FC<POSViewProps> = ({
   const [customizingProduct, setCustomizingProduct] = useState<Product | null>(null);
   const [selectedVariant, setSelectedVariant] = useState<ProductVariant | null>(null);
   const [selectedModifiers, setSelectedModifiers] = useState<Modifier[]>([]);
-  const [customizerNotes, setCustomizerNotes] = useState<string>('');
+  const [itemNotes, setItemNotes] = useState<string>('');
 
   // Checkout Modal State
   const [isCheckoutOpen, setIsCheckoutOpen] = useState<boolean>(false);
@@ -73,10 +73,10 @@ export const POSView: React.FC<POSViewProps> = ({
   const [referenceNumber, setReferenceNumber] = useState<string>('');
   const [isConfirmedOnlineRef, setIsConfirmedOnlineRef] = useState<boolean>(false);
   const [checkoutError, setCheckoutError] = useState<string | null>(null);
+  const [isProcessingCheckout, setIsProcessingCheckout] = useState<boolean>(false);
 
   // Completed Receipt Modal State
   const [completedSale, setCompletedSale] = useState<Sale | null>(null);
-  const [inventoryWarnings, setInventoryWarnings] = useState<string[]>([]);
 
   // Filtered Products
   const filteredProducts = useMemo(() => {
@@ -100,81 +100,76 @@ export const POSView: React.FC<POSViewProps> = ({
       return { cents: 0, label: '' };
     }
     if (discountType === 'senior') {
-      return { cents: Math.round(subtotalCents * 0.20), label: 'Senior Citizen (20%)' };
+      return { cents: Math.round(subtotalCents * 0.20), label: 'Senior (20%)' };
     }
     if (discountType === 'pwd') {
-      return { cents: Math.round(subtotalCents * 0.20), label: 'PWD Discount (20%)' };
+      return { cents: Math.round(subtotalCents * 0.20), label: 'PWD (20%)' };
     }
     if (discountType === 'staff') {
-      return { cents: Math.round(subtotalCents * 0.10), label: 'Barista / Staff (10%)' };
+      return { cents: Math.round(subtotalCents * 0.10), label: 'Staff (10%)' };
     }
     if (discountType === 'custom') {
-      const pct = Math.min(100, Math.max(0, customDiscountPercent));
-      return { cents: Math.round(subtotalCents * (pct / 100)), label: `Custom (${pct}%)` };
+      const pct = Math.min(100, Math.max(0, customDiscountPercent)) / 100;
+      return { cents: Math.round(subtotalCents * pct), label: `Discount (${customDiscountPercent}%)` };
     }
     return { cents: 0, label: '' };
   }, [subtotalCents, discountType, customDiscountPercent]);
 
   const totalCents = Math.max(0, subtotalCents - discountDetails.cents);
 
-  // Open Customizer for a product
+  // Selecting a product from grid
   const handleSelectProduct = (product: Product) => {
-    setCustomizingProduct(product);
-    setSelectedVariant(product.variants[0] || null);
-    setSelectedModifiers([]);
-    setCustomizerNotes('');
+    if (product.variants.length === 1 && product.modifierGroupIds.length === 0) {
+      // Single size, no modifiers -> add immediately
+      const variant = product.variants[0];
+      addToCartDirect(product, variant, [], '');
+    } else {
+      // Open clean customization dialog
+      setCustomizingProduct(product);
+      setSelectedVariant(product.variants[0] || null);
+      setSelectedModifiers([]);
+      setItemNotes('');
+    }
   };
 
-  // Modifier toggle
-  const toggleModifier = (mod: Modifier, maxSelection: number) => {
-    setSelectedModifiers(prev => {
-      const alreadySelected = prev.some(m => m.id === mod.id);
-      if (alreadySelected) {
-        return prev.filter(m => m.id !== mod.id);
-      }
-      if (maxSelection === 1) {
-        const withoutGroup = prev.filter(m => m.groupId !== mod.groupId);
-        return [...withoutGroup, mod];
-      }
-      return [...prev, mod];
-    });
-  };
-
-  // Add customized product to Cart
-  const handleAddToCart = () => {
-    if (!customizingProduct || !selectedVariant) return;
-
-    const modifiersCost = selectedModifiers.reduce((sum, m) => sum + m.priceCents, 0);
-    const unitPriceCents = selectedVariant.priceCents + modifiersCost;
+  const addToCartDirect = (
+    product: Product,
+    variant: ProductVariant,
+    modifiers: Modifier[],
+    notes: string
+  ) => {
+    const modifierTotalCents = modifiers.reduce((sum, m) => sum + m.priceCents, 0);
+    const unitPriceCents = variant.priceCents + modifierTotalCents;
 
     const newItem: CartItem = {
       tempId: 'cart-' + Date.now() + '-' + Math.random().toString(36).substr(2, 4),
-      product: customizingProduct,
-      variant: selectedVariant,
-      selectedModifiers: [...selectedModifiers],
+      product,
+      variant,
+      selectedModifiers: modifiers,
       quantity: 1,
-      notes: customizerNotes.trim() || undefined,
       unitPriceCents,
-      totalPriceCents: unitPriceCents
+      totalPriceCents: unitPriceCents,
+      notes: notes.trim() || undefined
     };
 
     setCart(prev => [...prev, newItem]);
+  };
+
+  const handleConfirmCustomization = () => {
+    if (!customizingProduct || !selectedVariant) return;
+    addToCartDirect(customizingProduct, selectedVariant, selectedModifiers, itemNotes);
     setCustomizingProduct(null);
   };
 
-  // Cart item modifications
   const handleUpdateQuantity = (tempId: string, delta: number) => {
     setCart(prev =>
       prev
         .map(item => {
           if (item.tempId === tempId) {
             const newQty = item.quantity + delta;
-            if (newQty <= 0) return null;
-            return {
-              ...item,
-              quantity: newQty,
-              totalPriceCents: item.unitPriceCents * newQty
-            };
+            return newQty > 0
+              ? { ...item, quantity: newQty, totalPriceCents: newQty * item.unitPriceCents }
+              : null;
           }
           return item;
         })
@@ -187,16 +182,30 @@ export const POSView: React.FC<POSViewProps> = ({
   };
 
   const handleClearCart = () => {
-    if (cart.length > 0 && window.confirm('Clear all items from current ticket?')) {
+    if (cart.length > 0) {
       setCart([]);
-      setCustomerName('');
       setDiscountType('none');
     }
   };
 
-  // Checkout Actions
+  const toggleModifier = (mod: Modifier, maxSelection: number) => {
+    setSelectedModifiers(prev => {
+      const exists = prev.some(m => m.id === mod.id);
+      if (exists) {
+        return prev.filter(m => m.id !== mod.id);
+      }
+      if (maxSelection === 1) {
+        const filtered = prev.filter(m => m.groupId !== mod.groupId);
+        return [...filtered, mod];
+      }
+      return [...prev, mod];
+    });
+  };
+
+  // Open Checkout
   const handleOpenCheckout = () => {
     if (cart.length === 0) return;
+    setPaymentMethod('cash');
     setCashTenderedInput((totalCents / 100).toString());
     setReferenceNumber('');
     setIsConfirmedOnlineRef(false);
@@ -208,13 +217,13 @@ export const POSView: React.FC<POSViewProps> = ({
   const tenderedCents = Math.round(tenderedAmount * 100);
   const changeCents = Math.max(0, tenderedCents - totalCents);
 
-  const handleCompleteSale = () => {
+  const handleCompleteSale = async () => {
     setCheckoutError(null);
 
     // Validation
     if (paymentMethod === 'cash') {
       if (tenderedCents < totalCents) {
-        setCheckoutError(`Tendered cash (₱${tenderedAmount.toFixed(2)}) is less than total amount due (${formatPHP(totalCents)})`);
+        setCheckoutError(`Tendered cash (${formatPHP(tenderedCents)}) is less than total due (${formatPHP(totalCents)})`);
         return;
       }
     } else {
@@ -228,8 +237,9 @@ export const POSView: React.FC<POSViewProps> = ({
       }
     }
 
+    setIsProcessingCheckout(true);
     try {
-      const result = db.checkoutSale({
+      const result = await dataService.checkoutSale({
         items: cart,
         orderType,
         customerName: customerName.trim() || undefined,
@@ -245,39 +255,34 @@ export const POSView: React.FC<POSViewProps> = ({
       setDiscountType('none');
       setIsCheckoutOpen(false);
       setCompletedSale(result.sale);
-      setInventoryWarnings(result.inventoryWarnings);
       onRefreshData();
     } catch (e) {
       setCheckoutError('Transaction failed: ' + (e as Error).message);
+    } finally {
+      setIsProcessingCheckout(false);
     }
   };
 
-  // Load Preset Coffee Items (with Generated Photography)
-  const handleLoadSpecialtyPresets = () => {
-    db.loadSpecialtyCoffeeSampleMenu();
-    onRefreshData();
-  };
-
   return (
-    <div className="flex h-[calc(100vh-4rem)] overflow-hidden bg-[#FAF7F2]">
+    <div className="flex h-[calc(100vh-3.5rem)] overflow-hidden bg-[#F7F3EB]">
       {/* LEFT SECTION: PRODUCT CATALOG & FILTERING */}
-      <div className="flex-1 flex flex-col overflow-hidden p-5 border-r border-stone-200">
-        {/* Search & Category Filter */}
-        <div className="flex items-center gap-3 mb-3">
+      <div className="flex-1 flex flex-col overflow-hidden p-6 border-r border-[#E8E2D9]">
+        {/* Search & Categories Bar */}
+        <div className="flex items-center gap-3 mb-4">
           <div className="relative flex-1">
-            <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-stone-500" />
+            <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-[#9B948C]" />
             <input
               type="text"
-              placeholder="Search drinks, SKU, pastries..."
+              placeholder="Search drinks, pastries..."
               value={searchQuery}
               onChange={e => setSearchQuery(e.target.value)}
-              className="w-full bg-white pl-10 pr-4 py-2.5 rounded-2xl border border-stone-200 text-xs text-stone-900 font-medium placeholder:text-stone-400 outline-hidden focus:border-stone-900 shadow-2xs transition"
+              className="w-full bg-white pl-9 pr-4 py-2 rounded-xl border border-[#E8E2D9] text-xs text-[#292929] placeholder:text-[#9B948C] outline-hidden focus:border-[#3B2925] transition"
             />
           </div>
           {searchQuery && (
             <button
               onClick={() => setSearchQuery('')}
-              className="px-3.5 py-2 text-xs font-bold text-stone-800 bg-white rounded-2xl border border-stone-200 hover:bg-stone-100 cursor-pointer"
+              className="px-3 py-2 text-xs text-[#6E6862] bg-white rounded-xl border border-[#E8E2D9] hover:bg-[#F7F3EB] cursor-pointer"
             >
               Clear
             </button>
@@ -285,33 +290,30 @@ export const POSView: React.FC<POSViewProps> = ({
         </div>
 
         {/* Clean Segmented Category Tabs */}
-        <div className="flex items-center gap-2 overflow-x-auto pb-2 scrollbar-none mb-3">
+        <div className="flex items-center gap-1.5 overflow-x-auto pb-3 mb-2 scrollbar-none">
           <button
             onClick={() => setSelectedCategory('all')}
-            className={`px-4 py-2 rounded-xl text-xs font-black whitespace-nowrap transition cursor-pointer ${
+            className={`px-3 py-1.5 rounded-lg text-xs font-medium whitespace-nowrap transition cursor-pointer ${
               selectedCategory === 'all'
-                ? 'bg-[#14100E] text-[#B4EE10] shadow-md'
-                : 'bg-white text-stone-700 hover:bg-stone-100 border border-stone-200'
+                ? 'bg-[#3B2925] text-white shadow-xs'
+                : 'bg-white text-[#6E6862] hover:bg-[#EFE9DF] border border-[#E8E2D9]'
             }`}
           >
             All Items
           </button>
           {categories.map(cat => {
-            const count = products.filter(p => p.categoryId === cat.id && p.isActive).length;
+            const isSelected = selectedCategory === cat.id;
             return (
               <button
                 key={cat.id}
                 onClick={() => setSelectedCategory(cat.id)}
-                className={`px-4 py-2 rounded-xl text-xs font-black whitespace-nowrap transition flex items-center gap-1.5 cursor-pointer ${
-                  selectedCategory === cat.id
-                    ? 'bg-[#14100E] text-[#B4EE10] shadow-md'
-                    : 'bg-white text-stone-700 hover:bg-stone-100 border border-stone-200'
+                className={`px-3 py-1.5 rounded-lg text-xs font-medium whitespace-nowrap transition cursor-pointer ${
+                  isSelected
+                    ? 'bg-[#3B2925] text-white shadow-xs'
+                    : 'bg-white text-[#6E6862] hover:bg-[#EFE9DF] border border-[#E8E2D9]'
                 }`}
               >
-                <span>{cat.name}</span>
-                {count > 0 && (
-                  <span className="text-[10px] font-mono opacity-80">({count})</span>
-                )}
+                {cat.name}
               </button>
             );
           })}
@@ -320,35 +322,25 @@ export const POSView: React.FC<POSViewProps> = ({
         {/* Product Cards Grid */}
         <div className="flex-1 overflow-y-auto pr-1">
           {products.length === 0 ? (
-            /* Clean Empty State with Gen Z Fast Action */
-            <div className="h-full flex flex-col items-center justify-center p-8 text-center max-w-md mx-auto">
-              <div className="w-16 h-16 rounded-3xl bg-white border border-stone-200 flex items-center justify-center text-[#14100E] mb-4 shadow-sm">
-                <Coffee className="w-8 h-8 stroke-[1.5]" />
+            <div className="h-full flex flex-col items-center justify-center p-8 text-center max-w-sm mx-auto">
+              <div className="w-12 h-12 rounded-xl bg-white border border-[#E8E2D9] flex items-center justify-center text-[#7A736C] mb-3">
+                <Coffee className="w-6 h-6 stroke-[1.5]" />
               </div>
-              <h3 className="font-display font-black text-xl text-stone-900 uppercase tracking-tight">
-                Menu is Currently Clean
+              <h3 className="text-sm font-semibold text-[#292929]">
+                Menu is empty
               </h3>
-              <p className="text-xs text-stone-600 mt-2 leading-relaxed">
-                You are running on a clean slate. You can add your custom drinks and coffee beans in Menu Management, or load specialty sample presets anytime.
+              <p className="text-xs text-[#7A736C] mt-1">
+                Add products in the Menu tab to begin cashier operations.
               </p>
-              <div className="mt-6 flex flex-col sm:flex-row gap-2.5 w-full">
-                <button
-                  onClick={handleLoadSpecialtyPresets}
-                  className="flex-1 px-5 py-3 rounded-2xl bg-[#14100E] hover:bg-stone-900 text-[#B4EE10] text-xs font-black uppercase tracking-wider transition shadow-md flex items-center justify-center gap-2 cursor-pointer"
-                >
-                  <Sparkles className="w-4 h-4 text-[#B4EE10]" />
-                  <span>Load Sample Coffee Menu</span>
-                </button>
-              </div>
             </div>
           ) : filteredProducts.length === 0 ? (
-            <div className="h-64 flex flex-col items-center justify-center text-center text-stone-500">
-              <Search className="w-8 h-8 text-stone-300 mb-2" />
-              <p className="text-sm font-bold text-stone-800">No items match your search filter</p>
-              <p className="text-xs text-stone-500 mt-0.5">Try searching another drink name or code</p>
+            <div className="h-64 flex flex-col items-center justify-center text-center text-[#9B948C]">
+              <Search className="w-6 h-6 text-[#DDD4C7] mb-2" />
+              <p className="text-xs font-medium text-[#292929]">No items match your search</p>
+              <p className="text-[11px] text-[#7A736C] mt-0.5">Try searching another drink name</p>
             </div>
           ) : (
-            <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3.5">
+            <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-3">
               {filteredProducts.map(product => {
                 const lowestPrice = Math.min(...product.variants.map(v => v.priceCents));
                 const highestPrice = Math.max(...product.variants.map(v => v.priceCents));
@@ -361,48 +353,38 @@ export const POSView: React.FC<POSViewProps> = ({
                   <button
                     key={product.id}
                     onClick={() => handleSelectProduct(product)}
-                    className="group bg-white rounded-3xl overflow-hidden text-left border border-stone-200 hover:border-stone-900 hover:shadow-lg transition-all active:scale-[0.98] flex flex-col justify-between cursor-pointer"
+                    className="group bg-white rounded-xl overflow-hidden text-left border border-[#E8E2D9] hover:border-[#3B2925] hover:shadow-xs transition flex flex-col justify-between cursor-pointer"
                   >
-                    {/* Visual Asset if present */}
+                    {/* Product Photo if available */}
                     {product.imageUrl && (
-                      <div className="w-full aspect-[4/3] bg-stone-100 overflow-hidden relative">
+                      <div className="w-full aspect-[4/3] bg-[#F7F3EB] overflow-hidden relative">
                         <img
                           src={product.imageUrl}
                           alt={product.name}
                           referrerPolicy="no-referrer"
-                          className="w-full h-full object-cover group-hover:scale-105 transition duration-300"
+                          className="w-full h-full object-cover group-hover:scale-102 transition duration-200"
                         />
                       </div>
                     )}
 
-                    <div className="p-4 flex-1 flex flex-col justify-between">
+                    <div className="p-3 flex-1 flex flex-col justify-between">
                       <div>
-                        {/* Unboxed Metadata Line */}
-                        <div className="text-[10px] font-mono text-stone-500 font-bold uppercase mb-1">
-                          <span>{product.sku || 'ITEM'}</span>
-                          {product.variants.length > 1 && (
-                            <>
-                              <span aria-hidden="true" className="mx-1">·</span>
-                              <span>{product.variants.length} Sizes</span>
-                            </>
-                          )}
-                        </div>
-                        <h4 className="font-display font-black text-sm text-stone-900 leading-snug group-hover:text-amber-900 transition line-clamp-2">
+                        <h4 className="text-xs font-semibold text-[#292929] leading-snug">
                           {product.name}
                         </h4>
-                        {product.description && (
-                          <p className="text-[11px] text-stone-600 mt-1 line-clamp-2 leading-relaxed">
-                            {product.description}
+                        {product.variants.length > 1 && (
+                          <p className="text-[10px] text-[#7A736C] mt-0.5">
+                            {product.variants.length} sizes
                           </p>
                         )}
                       </div>
 
-                      <div className="mt-3 pt-2.5 border-t border-stone-100 flex items-center justify-between">
-                        <span className="text-xs font-black font-mono tabular-nums text-stone-900">
+                      <div className="mt-3 pt-2 border-t border-[#F7F3EB] flex items-center justify-between">
+                        <span className="text-xs font-mono font-medium text-[#3B2925]">
                           {priceDisplay}
                         </span>
-                        <div className="w-7 h-7 rounded-xl bg-stone-100 group-hover:bg-[#14100E] group-hover:text-[#B4EE10] text-stone-800 flex items-center justify-center transition">
-                          <Plus className="w-4 h-4" />
+                        <div className="w-6 h-6 rounded-md bg-[#F7F3EB] group-hover:bg-[#3B2925] group-hover:text-white text-[#7A736C] flex items-center justify-center transition">
+                          <Plus className="w-3.5 h-3.5" />
                         </div>
                       </div>
                     </div>
@@ -415,39 +397,38 @@ export const POSView: React.FC<POSViewProps> = ({
       </div>
 
       {/* RIGHT SECTION: CURRENT ORDER TICKET */}
-      <div className="w-96 bg-white flex flex-col justify-between border-l border-stone-200 shrink-0 shadow-lg">
+      <div className="w-88 bg-white flex flex-col justify-between border-l border-[#E8E2D9] shrink-0">
         {/* Ticket Header */}
-        <div className="p-4 border-b border-stone-200 space-y-3">
+        <div className="p-4 border-b border-[#E8E2D9] space-y-3">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <span className="font-display font-black text-sm uppercase text-stone-900">
-                Order Ticket
+              <span className="text-xs font-semibold text-[#292929]">
+                Current Order
               </span>
-              <span className="px-2 py-0.5 rounded-full bg-stone-100 text-stone-700 text-[10px] font-mono font-bold">
-                {cart.length} items
+              <span className="text-[10px] font-mono text-[#7A736C]">
+                ({cart.length} {cart.length === 1 ? 'item' : 'items'})
               </span>
             </div>
             {cart.length > 0 && (
               <button
                 onClick={handleClearCart}
-                className="text-[11px] text-rose-600 hover:text-rose-800 font-bold flex items-center gap-1 transition cursor-pointer"
+                className="text-[11px] text-[#A25035] hover:underline cursor-pointer"
               >
-                <Trash2 className="w-3.5 h-3.5" />
-                <span>Clear</span>
+                Clear
               </button>
             )}
           </div>
 
           {/* Dine In / Take Out Segmented Toggle */}
-          <div className="grid grid-cols-3 gap-1 bg-stone-100 p-1 rounded-2xl border border-stone-200">
+          <div className="grid grid-cols-3 gap-1 bg-[#F7F3EB] p-1 rounded-xl border border-[#E8E2D9]">
             {(['dine_in', 'take_out', 'delivery_pickup'] as OrderType[]).map(type => (
               <button
                 key={type}
                 onClick={() => setOrderType(type)}
-                className={`py-1.5 rounded-xl text-xs font-bold transition capitalize cursor-pointer ${
+                className={`py-1 rounded-lg text-xs font-medium transition cursor-pointer ${
                   orderType === type
-                    ? 'bg-[#14100E] text-white shadow-xs font-black'
-                    : 'text-stone-700 hover:text-black'
+                    ? 'bg-[#3B2925] text-white shadow-xs'
+                    : 'text-[#6E6862] hover:text-[#292929]'
                 }`}
               >
                 {type === 'dine_in' ? 'Dine In' : type === 'take_out' ? 'Take Out' : 'Delivery'}
@@ -455,83 +436,71 @@ export const POSView: React.FC<POSViewProps> = ({
             ))}
           </div>
 
-          {/* Customer Name Field */}
+          {/* Customer Name */}
           <input
             type="text"
-            placeholder="Customer name (Optional)"
+            placeholder="Customer name (optional)"
             value={customerName}
             onChange={e => setCustomerName(e.target.value)}
-            className="w-full bg-stone-50 px-3.5 py-2 rounded-xl border border-stone-200 text-xs text-stone-900 placeholder:text-stone-400 outline-hidden focus:border-stone-900"
+            className="w-full bg-[#FBF9F5] px-3 py-1.5 rounded-lg border border-[#E8E2D9] text-xs text-[#292929] placeholder:text-[#9B948C] outline-hidden focus:border-[#3B2925]"
           />
         </div>
 
         {/* Cart Items List */}
-        <div className="flex-1 overflow-y-auto p-4 divide-y divide-stone-100">
+        <div className="flex-1 overflow-y-auto p-4 divide-y divide-[#F7F3EB]">
           {cart.length === 0 ? (
-            <div className="h-full flex flex-col items-center justify-center text-center text-stone-500">
-              <div className="w-12 h-12 rounded-2xl bg-stone-100 flex items-center justify-center text-stone-400 mb-2">
-                <Tag className="w-5 h-5 stroke-[1.5]" />
+            <div className="h-full flex flex-col items-center justify-center text-center text-[#9B948C]">
+              <div className="w-10 h-10 rounded-xl bg-[#F7F3EB] flex items-center justify-center text-[#9B948C] mb-2">
+                <Tag className="w-4 h-4 stroke-[1.5]" />
               </div>
-              <p className="text-xs font-bold text-stone-800">Ticket is empty</p>
-              <p className="text-[11px] text-stone-500 mt-0.5">
-                Select coffee or food from the catalog on the left
+              <p className="text-xs font-medium text-[#292929]">Order ticket is empty</p>
+              <p className="text-[11px] text-[#7A736C] mt-0.5">
+                Select drinks from the menu
               </p>
             </div>
           ) : (
             cart.map(item => (
-              <div key={item.tempId} className="py-3 first:pt-0 last:pb-0">
+              <div key={item.tempId} className="py-2.5 first:pt-0 last:pb-0">
                 <div className="flex items-start justify-between gap-2">
                   <div className="flex-1">
-                    <h5 className="font-bold text-xs text-stone-900 leading-snug">
+                    <h5 className="text-xs font-medium text-[#292929] leading-snug">
                       {item.product.name}
                     </h5>
-                    <p className="text-[11px] text-stone-600 font-semibold mt-0.5">
+                    <p className="text-[11px] text-[#7A736C]">
                       {item.variant.name}
                     </p>
                     {item.selectedModifiers.length > 0 && (
-                      <div className="text-[10px] text-stone-600 mt-1 space-y-0.5 pl-2 border-l-2 border-[#B4EE10]">
-                        {item.selectedModifiers.map(m => (
-                          <div key={m.id} className="flex justify-between">
-                            <span>+ {m.name}</span>
-                            {m.priceCents > 0 && (
-                              <span className="font-mono tabular-nums">{formatPHP(m.priceCents)}</span>
-                            )}
-                          </div>
-                        ))}
+                      <div className="text-[10px] text-[#7A736C] mt-0.5">
+                        {item.selectedModifiers.map(m => m.name).join(', ')}
                       </div>
                     )}
-                    {item.notes && (
-                      <p className="text-[10px] italic text-amber-900 bg-amber-50 px-2 py-0.5 rounded mt-1">
-                        Note: {item.notes}
-                      </p>
-                    )}
                   </div>
-                  <span className="font-black text-xs font-mono tabular-nums text-stone-900 shrink-0">
+                  <span className="text-xs font-mono font-medium text-[#292929] shrink-0">
                     {formatPHP(item.totalPriceCents)}
                   </span>
                 </div>
 
                 {/* Quantity Controls */}
-                <div className="flex items-center justify-between mt-2.5">
+                <div className="flex items-center justify-between mt-2">
                   <button
                     onClick={() => handleRemoveFromCart(item.tempId)}
-                    className="p-1 text-stone-400 hover:text-rose-600 rounded transition cursor-pointer"
+                    className="text-[#9B948C] hover:text-[#A25035] transition cursor-pointer p-0.5"
                   >
                     <Trash2 className="w-3.5 h-3.5" />
                   </button>
-                  <div className="flex items-center gap-2 bg-stone-100 rounded-xl p-1 border border-stone-200">
+                  <div className="flex items-center gap-2 bg-[#F7F3EB] rounded-lg p-0.5 border border-[#E8E2D9]">
                     <button
                       onClick={() => handleUpdateQuantity(item.tempId, -1)}
-                      className="w-6 h-6 rounded-lg bg-white text-stone-900 hover:bg-stone-200 flex items-center justify-center font-bold text-xs shadow-2xs cursor-pointer"
+                      className="w-5 h-5 rounded bg-white text-[#292929] hover:bg-[#EFE9DF] flex items-center justify-center text-xs font-medium cursor-pointer shadow-2xs"
                     >
                       <Minus className="w-3 h-3" />
                     </button>
-                    <span className="w-6 text-center text-xs font-mono font-black tabular-nums text-stone-900">
+                    <span className="w-5 text-center text-xs font-mono tabular-nums text-[#292929]">
                       {item.quantity}
                     </span>
                     <button
                       onClick={() => handleUpdateQuantity(item.tempId, 1)}
-                      className="w-6 h-6 rounded-lg bg-white text-stone-900 hover:bg-stone-200 flex items-center justify-center font-bold text-xs shadow-2xs cursor-pointer"
+                      className="w-5 h-5 rounded bg-white text-[#292929] hover:bg-[#EFE9DF] flex items-center justify-center text-xs font-medium cursor-pointer shadow-2xs"
                     >
                       <Plus className="w-3 h-3" />
                     </button>
@@ -542,108 +511,89 @@ export const POSView: React.FC<POSViewProps> = ({
           )}
         </div>
 
-        {/* Pricing Summary & Tender Action */}
-        <div className="p-4 border-t border-stone-200 bg-stone-50/70 space-y-3">
-          {/* Discounts Selector */}
-          <div className="space-y-1">
-            <div className="flex items-center justify-between text-xs">
-              <span className="text-stone-700 font-bold">Discount / Privilege:</span>
-              <select
-                value={discountType}
-                onChange={e => setDiscountType(e.target.value as any)}
-                className="bg-white border border-stone-200 text-xs text-stone-900 rounded-xl px-2.5 py-1 outline-hidden focus:border-stone-900 font-bold cursor-pointer"
-              >
-                <option value="none">No Discount</option>
-                <option value="senior">Senior Citizen (20%)</option>
-                <option value="pwd">PWD (20%)</option>
-                <option value="staff">Barista Staff (10%)</option>
-                <option value="custom">Custom %</option>
-              </select>
-            </div>
-            {discountType === 'custom' && (
-              <div className="flex items-center gap-2 mt-1">
-                <input
-                  type="number"
-                  min="1"
-                  max="100"
-                  value={customDiscountPercent}
-                  onChange={e => setCustomDiscountPercent(parseInt(e.target.value) || 0)}
-                  className="w-20 bg-white border border-stone-200 px-2 py-1 rounded-lg text-xs font-mono font-bold"
-                />
-                <span className="text-xs text-stone-600">% off ticket total</span>
-              </div>
-            )}
+        {/* Pricing Summary & Checkout Button */}
+        <div className="p-4 border-t border-[#E8E2D9] bg-[#FBF9F5] space-y-3">
+          {/* Discount Selector */}
+          <div className="flex items-center justify-between text-xs">
+            <span className="text-[#6E6862]">Discount:</span>
+            <select
+              value={discountType}
+              onChange={e => setDiscountType(e.target.value as any)}
+              className="bg-white border border-[#E8E2D9] text-xs text-[#292929] rounded-lg px-2 py-1 outline-hidden focus:border-[#3B2925] cursor-pointer"
+            >
+              <option value="none">None</option>
+              <option value="senior">Senior (20%)</option>
+              <option value="pwd">PWD (20%)</option>
+              <option value="staff">Staff (10%)</option>
+              <option value="custom">Custom %</option>
+            </select>
           </div>
 
           {/* Subtotal and Discount Rows */}
-          <div className="space-y-1 text-xs text-stone-700 font-semibold pt-1 border-t border-stone-200">
+          <div className="space-y-1 text-xs text-[#6E6862] pt-1 border-t border-[#E8E2D9]">
             <div className="flex justify-between">
               <span>Subtotal</span>
-              <span className="font-mono tabular-nums text-stone-900">{formatPHP(subtotalCents)}</span>
+              <span className="font-mono text-[#292929]">{formatPHP(subtotalCents)}</span>
             </div>
             {discountDetails.cents > 0 && (
-              <div className="flex justify-between text-rose-600 font-bold">
+              <div className="flex justify-between text-[#A25035]">
                 <span>{discountDetails.label}</span>
-                <span className="font-mono tabular-nums">-{formatPHP(discountDetails.cents)}</span>
+                <span className="font-mono">-{formatPHP(discountDetails.cents)}</span>
               </div>
             )}
-            <div className="flex justify-between text-[11px] text-stone-500">
-              <span>12% VAT (Included)</span>
-              <span className="font-mono tabular-nums">{formatPHP(Math.round(totalCents * 0.12 / 1.12))}</span>
-            </div>
           </div>
 
           {/* Grand Total */}
-          <div className="flex items-baseline justify-between pt-2 border-t border-stone-200">
-            <span className="font-display font-black text-sm uppercase text-stone-900">Total Due</span>
-            <span className="text-3xl font-black font-mono tabular-nums text-stone-900">
+          <div className="flex items-baseline justify-between pt-2 border-t border-[#E8E2D9]">
+            <span className="text-xs font-medium text-[#292929] uppercase tracking-wider">Total</span>
+            <span className="text-2xl font-bold font-mono text-[#292929]">
               {formatPHP(totalCents)}
             </span>
           </div>
 
-          {/* Primary Charge Button with Gen Z Lime Accent */}
+          {/* Primary Checkout Button in Espresso Brown */}
           <button
             onClick={handleOpenCheckout}
             disabled={cart.length === 0}
-            className={`w-full py-4 rounded-2xl font-black text-sm uppercase tracking-wider flex items-center justify-center gap-2 transition-all shadow-md cursor-pointer ${
+            className={`w-full py-3.5 rounded-xl font-medium text-xs tracking-wide flex items-center justify-center gap-2 transition cursor-pointer shadow-xs ${
               cart.length === 0
-                ? 'bg-stone-200 text-stone-400 cursor-not-allowed shadow-none'
-                : 'bg-[#B4EE10] hover:bg-[#CCFF00] active:scale-[0.98] text-[#14100E] shadow-[0_4px_20px_rgba(180,238,16,0.35)]'
+                ? 'bg-[#DDD4C7] text-[#9B948C] cursor-not-allowed'
+                : 'bg-[#3B2925] hover:bg-[#2C1E1A] text-white'
             }`}
           >
-            <Banknote className="w-5 h-5" />
-            <span>CHARGE {formatPHP(totalCents)}</span>
+            <Banknote className="w-4 h-4" />
+            <span>Charge {formatPHP(totalCents)}</span>
           </button>
         </div>
       </div>
 
       {/* PRODUCT CUSTOMIZER MODAL */}
       {customizingProduct && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4 overflow-y-auto">
-          <div className="w-full max-w-lg bg-white rounded-3xl shadow-2xl border border-stone-200 overflow-hidden my-6">
-            {/* Customizer Header */}
-            <div className="bg-[#14100E] text-white p-5 flex items-center justify-between">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-2xs p-4">
+          <div className="w-full max-w-md bg-white rounded-2xl shadow-xl border border-[#E8E2D9] overflow-hidden">
+            <div className="p-4 border-b border-[#E8E2D9] flex items-center justify-between">
               <div>
-                <h3 className="font-display font-black text-base uppercase tracking-tight text-white">
+                <h3 className="text-sm font-semibold text-[#292929]">
                   {customizingProduct.name}
                 </h3>
-                <p className="text-xs text-stone-300 mt-0.5">{customizingProduct.description}</p>
+                {customizingProduct.description && (
+                  <p className="text-xs text-[#7A736C] mt-0.5">{customizingProduct.description}</p>
+                )}
               </div>
               <button
                 onClick={() => setCustomizingProduct(null)}
-                className="p-1.5 rounded-xl hover:bg-white/10 text-stone-300 hover:text-white cursor-pointer"
+                className="p-1 rounded-lg text-[#7A736C] hover:text-[#292929] cursor-pointer"
               >
-                ✕
+                <X className="w-4 h-4" />
               </button>
             </div>
 
-            {/* Sizes & Variants */}
-            <div className="p-6 space-y-5 max-h-[70vh] overflow-y-auto">
+            <div className="p-5 space-y-4 max-h-[65vh] overflow-y-auto">
               <div>
-                <label className="text-xs font-black uppercase tracking-wider text-stone-900 block mb-2 font-display">
-                  Select Size / Variant
+                <label className="text-xs font-medium text-[#292929] block mb-2">
+                  Select Size
                 </label>
-                <div className="grid grid-cols-2 gap-2.5">
+                <div className="grid grid-cols-2 gap-2">
                   {customizingProduct.variants.map(variant => {
                     const isSelected = selectedVariant?.id === variant.id;
                     return (
@@ -651,36 +601,35 @@ export const POSView: React.FC<POSViewProps> = ({
                         key={variant.id}
                         type="button"
                         onClick={() => setSelectedVariant(variant)}
-                        className={`p-3 rounded-2xl border text-left flex items-center justify-between transition cursor-pointer ${
+                        className={`p-2.5 rounded-xl border text-left flex items-center justify-between transition cursor-pointer ${
                           isSelected
-                            ? 'bg-stone-100 border-[#14100E] ring-2 ring-[#14100E]'
-                            : 'border-stone-200 hover:bg-stone-50'
+                            ? 'bg-[#F7F3EB] border-[#3B2925] ring-1 ring-[#3B2925]'
+                            : 'border-[#E8E2D9] hover:bg-[#FAF7F2]'
                         }`}
                       >
                         <div>
-                          <p className="text-xs font-bold text-stone-900">{variant.name}</p>
-                          <p className="text-xs font-mono font-black tabular-nums text-stone-900 mt-0.5">
+                          <p className="text-xs font-medium text-[#292929]">{variant.name}</p>
+                          <p className="text-xs font-mono text-[#3B2925] mt-0.5">
                             {formatPHP(variant.priceCents)}
                           </p>
                         </div>
-                        {isSelected && <Check className="w-4 h-4 text-stone-900" />}
+                        {isSelected && <Check className="w-3.5 h-3.5 text-[#3B2925]" />}
                       </button>
                     );
                   })}
                 </div>
               </div>
 
-              {/* Modifier Groups */}
               {customizingProduct.modifierGroupIds.map(grpId => {
                 const group = modifierGroups.find(g => g.id === grpId);
                 if (!group) return null;
 
                 return (
-                  <div key={group.id} className="pt-2 border-t border-stone-200">
-                    <label className="text-xs font-black uppercase tracking-wider text-stone-900 block mb-2 font-display">
+                  <div key={group.id} className="pt-2 border-t border-[#F0EAE1]">
+                    <label className="text-xs font-medium text-[#292929] block mb-2">
                       {group.name}
                     </label>
-                    <div className="grid grid-cols-2 gap-2">
+                    <div className="grid grid-cols-2 gap-1.5">
                       {group.modifiers.map(mod => {
                         const isSelected = selectedModifiers.some(m => m.id === mod.id);
                         return (
@@ -688,14 +637,18 @@ export const POSView: React.FC<POSViewProps> = ({
                             key={mod.id}
                             type="button"
                             onClick={() => toggleModifier(mod, group.maxSelection)}
-                            className={`p-2.5 rounded-2xl border text-left flex items-center justify-between transition cursor-pointer ${
+                            className={`p-2 rounded-lg border text-left flex items-center justify-between transition cursor-pointer ${
                               isSelected
-                                ? 'bg-stone-100 border-[#14100E] ring-2 ring-[#14100E]'
-                                : 'border-stone-200 hover:bg-stone-50'
+                                ? 'bg-[#F7F3EB] border-[#3B2925] ring-1 ring-[#3B2925]'
+                                : 'border-[#E8E2D9] hover:bg-[#FAF7F2]'
                             }`}
                           >
-                            <span className="text-xs font-bold text-stone-900">{mod.name}</span>
-                            {isSelected && <Check className="w-3.5 h-3.5 text-stone-900" />}
+                            <span className="text-xs text-[#292929]">{mod.name}</span>
+                            {mod.priceCents > 0 && (
+                              <span className="text-[10px] font-mono text-[#7A736C]">
+                                +{formatPHP(mod.priceCents)}
+                              </span>
+                            )}
                           </button>
                         );
                       })}
@@ -703,50 +656,23 @@ export const POSView: React.FC<POSViewProps> = ({
                   </div>
                 );
               })}
-
-              {/* Notes */}
-              <div className="pt-2 border-t border-stone-200">
-                <label className="text-xs font-black uppercase tracking-wider text-stone-900 block mb-1.5 font-display">
-                  Barista Instructions
-                </label>
-                <input
-                  type="text"
-                  placeholder="e.g. Extra hot, personal tumbler, oat milk foam..."
-                  value={customizerNotes}
-                  onChange={e => setCustomizerNotes(e.target.value)}
-                  className="w-full bg-white border border-stone-200 rounded-2xl px-3.5 py-2 text-xs text-stone-900 outline-hidden focus:border-stone-900"
-                />
-              </div>
             </div>
 
-            {/* Customizer Footer */}
-            <div className="p-4 bg-stone-50 border-t border-stone-200 flex items-center justify-between">
-              <div>
-                <span className="text-xs text-stone-600 font-semibold">Item Total</span>
-                <p className="text-xl font-black font-mono tabular-nums text-stone-900">
-                  {formatPHP(
-                    (selectedVariant?.priceCents || 0) +
-                      selectedModifiers.reduce((sum, m) => sum + m.priceCents, 0)
-                  )}
-                </p>
-              </div>
-              <div className="flex gap-2">
-                <button
-                  type="button"
-                  onClick={() => setCustomizingProduct(null)}
-                  className="px-4 py-2.5 rounded-2xl text-xs font-bold text-stone-700 hover:bg-stone-200 transition cursor-pointer"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="button"
-                  onClick={handleAddToCart}
-                  className="px-6 py-2.5 rounded-2xl text-xs font-black bg-[#14100E] text-[#B4EE10] hover:bg-stone-900 transition shadow-sm flex items-center gap-1.5 cursor-pointer"
-                >
-                  <Plus className="w-4 h-4" />
-                  <span>Add to Ticket</span>
-                </button>
-              </div>
+            <div className="p-4 border-t border-[#E8E2D9] bg-[#FBF9F5] flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setCustomizingProduct(null)}
+                className="px-4 py-2 rounded-xl text-xs font-medium text-[#6E6862] hover:bg-[#EFE9DF] cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmCustomization}
+                className="px-4 py-2 rounded-xl text-xs font-medium bg-[#3B2925] text-white hover:bg-[#2C1E1A] cursor-pointer shadow-xs"
+              >
+                Add to Ticket
+              </button>
             </div>
           </div>
         </div>
@@ -754,32 +680,32 @@ export const POSView: React.FC<POSViewProps> = ({
 
       {/* CHECKOUT MODAL */}
       {isCheckoutOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4 overflow-y-auto">
-          <div className="w-full max-w-xl bg-white rounded-3xl shadow-2xl border border-stone-200 overflow-hidden my-6">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-2xs p-4">
+          <div className="w-full max-w-lg bg-white rounded-2xl shadow-xl border border-[#E8E2D9] overflow-hidden">
             {/* Header */}
-            <div className="bg-[#14100E] text-white p-5 flex items-center justify-between">
+            <div className="p-5 border-b border-[#E8E2D9] flex items-center justify-between">
               <div>
-                <span className="text-xs text-[#B4EE10] font-mono font-bold tracking-wider uppercase">
-                  Tender Payment
-                </span>
-                <h3 className="font-display font-black text-xl mt-0.5 uppercase tracking-tight text-white">
-                  Checkout Cashier
+                <h3 className="text-base font-semibold text-[#292929]">
+                  Checkout Order
                 </h3>
+                <p className="text-xs text-[#7A736C] mt-0.5">
+                  Select payment method and confirm tender
+                </p>
               </div>
               <div className="text-right">
-                <span className="text-xs text-stone-300">Total Due</span>
-                <p className="text-3xl font-black font-mono tabular-nums text-white">
+                <span className="text-xs text-[#7A736C]">Amount Due</span>
+                <p className="text-2xl font-bold font-mono text-[#3B2925]">
                   {formatPHP(totalCents)}
                 </p>
               </div>
             </div>
 
             {/* Body */}
-            <div className="p-6 space-y-5">
-              {/* Payment Methods Tabs */}
+            <div className="p-5 space-y-4">
+              {/* Payment Methods */}
               <div className="grid grid-cols-4 gap-2">
                 {[
-                  { id: 'cash', label: 'Cash (PHP)', icon: Banknote },
+                  { id: 'cash', label: 'Cash', icon: Banknote },
                   { id: 'gcash', label: 'GCash', icon: Smartphone },
                   { id: 'maya', label: 'Maya', icon: Smartphone },
                   { id: 'card_pos', label: 'Card POS', icon: CreditCard }
@@ -794,14 +720,14 @@ export const POSView: React.FC<POSViewProps> = ({
                         setPaymentMethod(tab.id as PaymentMethod);
                         setCheckoutError(null);
                       }}
-                      className={`p-3 rounded-2xl border text-center flex flex-col items-center gap-1.5 transition cursor-pointer ${
+                      className={`p-3 rounded-xl border text-center flex flex-col items-center gap-1 transition cursor-pointer ${
                         isSelected
-                          ? 'bg-[#14100E] text-[#B4EE10] border-[#14100E] shadow-sm font-black'
-                          : 'border-stone-200 hover:bg-stone-50 text-stone-700 font-bold'
+                          ? 'bg-[#3B2925] text-white border-[#3B2925] shadow-xs'
+                          : 'border-[#E8E2D9] hover:bg-[#FAF7F2] text-[#6E6862]'
                       }`}
                     >
-                      <Icon className="w-5 h-5" />
-                      <span className="text-xs">{tab.label}</span>
+                      <Icon className="w-4 h-4" />
+                      <span className="text-xs font-medium">{tab.label}</span>
                     </button>
                   );
                 })}
@@ -809,96 +735,74 @@ export const POSView: React.FC<POSViewProps> = ({
 
               {/* Cash Payment Mode */}
               {paymentMethod === 'cash' ? (
-                <div className="space-y-4">
-                  {/* Quick Bill Selectors */}
-                  <div>
-                    <label className="text-xs font-black uppercase tracking-wider text-stone-700 block mb-2 font-display">
-                      Quick Cash Presets
-                    </label>
-                    <div className="grid grid-cols-5 gap-2">
-                      {[
-                        { label: 'Exact', amount: totalCents / 100 },
-                        { label: '₱100', amount: 100 },
-                        { label: '₱200', amount: 200 },
-                        { label: '₱500', amount: 500 },
-                        { label: '₱1,000', amount: 1000 }
-                      ].map(bill => (
-                        <button
-                          key={bill.label}
-                          type="button"
-                          onClick={() => setCashTenderedInput(bill.amount.toString())}
-                          className="py-2.5 rounded-2xl bg-stone-100 hover:bg-stone-200 border border-stone-200 text-xs font-black font-mono tabular-nums text-stone-900 active:scale-95 transition cursor-pointer"
-                        >
-                          {bill.label}
-                        </button>
-                      ))}
-                    </div>
+                <div className="space-y-3">
+                  {/* Quick Cash Presets */}
+                  <div className="grid grid-cols-5 gap-1.5">
+                    {[
+                      { label: 'Exact', amount: totalCents / 100 },
+                      { label: '₱100', amount: 100 },
+                      { label: '₱200', amount: 200 },
+                      { label: '₱500', amount: 500 },
+                      { label: '₱1,000', amount: 1000 }
+                    ].map(bill => (
+                      <button
+                        key={bill.label}
+                        type="button"
+                        onClick={() => setCashTenderedInput(bill.amount.toString())}
+                        className="py-1.5 rounded-lg bg-[#F7F3EB] hover:bg-[#EFE9DF] border border-[#E8E2D9] text-xs font-mono text-[#292929] cursor-pointer"
+                      >
+                        {bill.label}
+                      </button>
+                    ))}
                   </div>
 
-                  {/* Cash Input & Change Calculation */}
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className="grid grid-cols-2 gap-3">
                     <div>
-                      <label className="text-xs font-black uppercase tracking-wider text-stone-700 block mb-1 font-display">
+                      <label className="text-xs text-[#6E6862] block mb-1">
                         Cash Tendered (₱)
                       </label>
                       <input
                         type="number"
-                        step="1"
+                        step="0.01"
                         value={cashTenderedInput}
                         onChange={e => setCashTenderedInput(e.target.value)}
-                        className="w-full bg-white border-2 border-stone-300 focus:border-[#14100E] rounded-2xl px-4 py-3 text-2xl font-black font-mono tabular-nums text-stone-900 outline-hidden"
+                        className="w-full bg-white border border-[#E8E2D9] rounded-xl px-3 py-2 text-base font-mono font-medium text-[#292929] outline-hidden focus:border-[#3B2925]"
                       />
                     </div>
+
                     <div>
-                      <label className="text-xs font-black uppercase tracking-wider text-stone-700 block mb-1 font-display">
+                      <label className="text-xs text-[#6E6862] block mb-1">
                         Change Due
                       </label>
-                      <div
-                        className={`w-full border-2 rounded-2xl px-4 py-3 text-2xl font-black font-mono tabular-nums flex items-center justify-between ${
-                          tenderedCents >= totalCents
-                            ? 'bg-emerald-50 text-emerald-800 border-emerald-400'
-                            : 'bg-rose-50 text-rose-700 border-rose-300'
-                        }`}
-                      >
-                        <span>{formatPHP(changeCents)}</span>
+                      <div className="h-10 px-3 flex items-center bg-[#F7F3EB] rounded-xl border border-[#E8E2D9] font-mono font-bold text-base text-[#292929]">
+                        {formatPHP(changeCents)}
                       </div>
                     </div>
                   </div>
                 </div>
               ) : (
-                /* Electronic / Card Payment Mode (Offline Confirmation Logger) */
-                <div className="space-y-4 bg-stone-50 p-5 rounded-2xl border border-stone-200">
-                  <div className="flex items-start gap-2.5 text-xs text-stone-800">
-                    <Smartphone className="w-5 h-5 text-stone-900 shrink-0 mt-0.5" />
-                    <div>
-                      <p className="font-black text-stone-900 text-sm">Offline Payment Confirmation</p>
-                      <p className="text-stone-600 mt-1 leading-relaxed">
-                        C5ISR operates offline. The cashier checks the customer's phone confirmation screen and logs the reference number below.
-                      </p>
-                    </div>
-                  </div>
-
+                <div className="space-y-3">
                   <div>
-                    <label className="text-xs font-black uppercase tracking-wider text-stone-900 block mb-1 font-display">
-                      {paymentMethod.toUpperCase()} Approval / Reference Number *
+                    <label className="text-xs text-[#6E6862] block mb-1">
+                      {paymentMethod.toUpperCase()} Approval / Reference Code
                     </label>
                     <input
                       type="text"
                       placeholder="e.g. 984321, APPR-0192"
                       value={referenceNumber}
                       onChange={e => setReferenceNumber(e.target.value)}
-                      className="w-full bg-white border-2 border-stone-300 focus:border-[#14100E] rounded-2xl px-4 py-3 text-sm font-mono font-black text-stone-900 uppercase outline-hidden"
+                      className="w-full bg-white border border-[#E8E2D9] rounded-xl px-3 py-2 text-sm font-mono text-[#292929] outline-hidden focus:border-[#3B2925]"
                     />
                   </div>
 
-                  <label className="flex items-center gap-2.5 cursor-pointer pt-1">
+                  <label className="flex items-center gap-2 cursor-pointer pt-1">
                     <input
                       type="checkbox"
                       checked={isConfirmedOnlineRef}
                       onChange={e => setIsConfirmedOnlineRef(e.target.checked)}
-                      className="w-4 h-4 rounded text-stone-900 focus:ring-stone-900"
+                      className="w-4 h-4 rounded text-[#3B2925] focus:ring-[#3B2925]"
                     />
-                    <span className="text-xs font-bold text-stone-800">
+                    <span className="text-xs text-[#6E6862]">
                       I have verified the customer's successful payment screen.
                     </span>
                   </label>
@@ -907,29 +811,40 @@ export const POSView: React.FC<POSViewProps> = ({
 
               {/* Error Message */}
               {checkoutError && (
-                <div className="flex items-center gap-2 p-3.5 rounded-2xl bg-rose-50 text-rose-800 border border-rose-200 text-xs font-bold">
-                  <AlertTriangle className="w-4 h-4 shrink-0 text-rose-600" />
+                <div className="flex items-center gap-2 p-3 rounded-xl bg-red-50 text-red-700 border border-red-200 text-xs">
+                  <AlertTriangle className="w-4 h-4 shrink-0 text-red-600" />
                   <span>{checkoutError}</span>
                 </div>
               )}
             </div>
 
             {/* Modal Actions */}
-            <div className="p-4 bg-white border-t border-stone-200 flex justify-end gap-3">
+            <div className="p-4 bg-[#FBF9F5] border-t border-[#E8E2D9] flex justify-end gap-2">
               <button
                 type="button"
+                disabled={isProcessingCheckout}
                 onClick={() => setIsCheckoutOpen(false)}
-                className="px-5 py-3 rounded-2xl text-xs font-bold text-stone-700 hover:bg-stone-100 border border-stone-200 transition cursor-pointer"
+                className="px-4 py-2 rounded-xl text-xs font-medium text-[#6E6862] hover:bg-[#EFE9DF] cursor-pointer"
               >
                 Back to Ticket
               </button>
               <button
                 type="button"
+                disabled={isProcessingCheckout}
                 onClick={handleCompleteSale}
-                className="px-7 py-3 rounded-2xl text-xs font-black bg-[#14100E] hover:bg-stone-900 text-[#B4EE10] transition shadow-md flex items-center gap-2 cursor-pointer"
+                className="px-5 py-2.5 rounded-xl text-xs font-medium bg-[#3B2925] hover:bg-[#2C1E1A] text-white transition shadow-xs flex items-center gap-2 cursor-pointer disabled:opacity-60"
               >
-                <Check className="w-4 h-4" />
-                <span>Complete & Print Receipt</span>
+                {isProcessingCheckout ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin text-[#A8B5A0]" />
+                    <span>Processing in Supabase...</span>
+                  </>
+                ) : (
+                  <>
+                    <Check className="w-4 h-4" />
+                    <span>Complete & Print Receipt</span>
+                  </>
+                )}
               </button>
             </div>
           </div>
@@ -943,28 +858,6 @@ export const POSView: React.FC<POSViewProps> = ({
         sale={completedSale}
         settings={settings}
       />
-
-      {/* INVENTORY ALERTS BANNER (AFTER CHECKOUT) */}
-      {inventoryWarnings.length > 0 && (
-        <div className="fixed bottom-4 left-68 right-8 z-40 bg-amber-50 border-2 border-amber-300 rounded-2xl p-4 shadow-xl flex items-center justify-between text-xs text-amber-950">
-          <div className="flex items-center gap-2.5">
-            <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0" />
-            <div className="space-y-0.5">
-              {inventoryWarnings.map((w, i) => (
-                <p key={i} className="font-bold">
-                  {w}
-                </p>
-              ))}
-            </div>
-          </div>
-          <button
-            onClick={() => setInventoryWarnings([])}
-            className="text-amber-900 hover:text-black font-black text-xs px-3 py-1 bg-amber-200 rounded-xl"
-          >
-            Dismiss
-          </button>
-        </div>
-      )}
     </div>
   );
 };

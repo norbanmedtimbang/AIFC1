@@ -3,12 +3,12 @@ import {
   Plus,
   Edit2,
   Trash2,
-  Layers,
   Coffee,
   Check,
   X,
   Sliders,
-  DollarSign
+  AlertCircle,
+  Loader2
 } from 'lucide-react';
 import {
   Product,
@@ -18,7 +18,8 @@ import {
   ProductVariant,
   RecipeIngredient
 } from '../../types';
-import { db, formatPHP, parsePHPAmountToCents } from '../../services/storage';
+import { formatPHP, parsePHPAmountToCents } from '../../services/storage';
+import { dataService } from '../../services/dataService';
 
 interface MenuManagementViewProps {
   products: Product[];
@@ -41,6 +42,8 @@ export const MenuManagementView: React.FC<MenuManagementViewProps> = ({
   // Edit / Add Product Modal
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [isProductModalOpen, setIsProductModalOpen] = useState(false);
+  const [isSavingProduct, setIsSavingProduct] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
 
   // New Category State
   const [newCategoryName, setNewCategoryName] = useState('');
@@ -69,37 +72,51 @@ export const MenuManagementView: React.FC<MenuManagementViewProps> = ({
       recipes: {}
     };
     setEditingProduct(newProd);
+    setSaveError(null);
     setIsProductModalOpen(true);
   };
 
   const handleEditProduct = (prod: Product) => {
-    // Clone product
     setEditingProduct(JSON.parse(JSON.stringify(prod)));
+    setSaveError(null);
     setIsProductModalOpen(true);
   };
 
-  const handleDeleteProduct = (productId: string) => {
+  const handleDeleteProduct = async (productId: string) => {
     if (window.confirm('Are you sure you want to delete this product from the menu?')) {
-      db.deleteProduct(productId);
-      onRefreshData();
+      try {
+        await dataService.deleteProduct(productId);
+        onRefreshData();
+      } catch (err) {
+        alert('Failed to delete product: ' + (err as Error).message);
+      }
     }
   };
 
   // Save Product Changes
-  const handleSaveProduct = () => {
+  const handleSaveProduct = async () => {
+    setSaveError(null);
     if (!editingProduct || !editingProduct.name.trim()) {
-      alert('Please enter a valid product name.');
+      setSaveError('Please enter a valid product name.');
       return;
     }
     if (editingProduct.variants.length === 0) {
-      alert('A product must have at least one size or variant.');
+      setSaveError('A product must have at least one size or variant.');
       return;
     }
 
-    db.saveProduct(editingProduct);
-    setIsProductModalOpen(false);
-    setEditingProduct(null);
-    onRefreshData();
+    setIsSavingProduct(true);
+    try {
+      await dataService.saveProduct(editingProduct);
+      setIsProductModalOpen(false);
+      setEditingProduct(null);
+      onRefreshData();
+    } catch (err) {
+      console.error('Save product error:', err);
+      setSaveError((err as Error).message || 'Failed to save product to cloud database.');
+    } finally {
+      setIsSavingProduct(false);
+    }
   };
 
   // Add Variant in Modal
@@ -119,6 +136,18 @@ export const MenuManagementView: React.FC<MenuManagementViewProps> = ({
     });
   };
 
+  const handleRemoveVariant = (variantId: string) => {
+    if (!editingProduct) return;
+    if (editingProduct.variants.length <= 1) {
+      alert('A product must have at least one size variant.');
+      return;
+    }
+    setEditingProduct({
+      ...editingProduct,
+      variants: editingProduct.variants.filter(v => v.id !== variantId)
+    });
+  };
+
   // Add Recipe Ingredient to Variant
   const handleAddRecipeIngredient = (variantId: string, inventoryItemId: string) => {
     if (!editingProduct) return;
@@ -128,7 +157,6 @@ export const MenuManagementView: React.FC<MenuManagementViewProps> = ({
     const currentRecipes = editingProduct.recipes || {};
     const variantRecipes = currentRecipes[variantId] || [];
 
-    // Avoid duplicates
     if (variantRecipes.some(r => r.inventoryItemId === inventoryItemId)) return;
 
     const newIngredient: RecipeIngredient = {
@@ -161,16 +189,20 @@ export const MenuManagementView: React.FC<MenuManagementViewProps> = ({
   };
 
   // Add Category
-  const handleAddCategory = () => {
+  const handleAddCategory = async () => {
     if (!newCategoryName.trim()) return;
     const newCat: Category = {
       id: 'cat-' + Date.now(),
       name: newCategoryName.trim(),
       displayOrder: categories.length + 1
     };
-    db.saveCategory(newCat);
-    setNewCategoryName('');
-    onRefreshData();
+    try {
+      await dataService.saveCategory(newCat);
+      setNewCategoryName('');
+      onRefreshData();
+    } catch (err) {
+      alert('Failed to save category: ' + (err as Error).message);
+    }
   };
 
   const filteredProducts = products.filter(p => {
@@ -179,47 +211,47 @@ export const MenuManagementView: React.FC<MenuManagementViewProps> = ({
   });
 
   return (
-    <div className="p-6 space-y-6 max-w-7xl mx-auto overflow-y-auto">
+    <div className="p-6 md:p-8 space-y-6 max-w-6xl mx-auto overflow-y-auto">
       {/* Top Header & Tabs */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-c5-beige pb-4">
+      <div className="flex flex-col sm:flex-row sm:items-baseline justify-between gap-4 border-b border-[#E8E2D9] pb-4">
         <div>
-          <h2 className="text-xl font-bold text-c5-charcoal">Menu & Recipe Engineering</h2>
-          <p className="text-xs text-c5-charcoal-muted mt-0.5">
-            Configure specialty coffee drinks, variants, prices, modifiers, and recipe inventory links
+          <h1 className="text-xl font-bold text-[#292929]">Menu & Recipes</h1>
+          <p className="text-xs text-[#7A736C] mt-0.5">
+            Configure drinks, size variants, retail prices, and inventory recipe deductions
           </p>
         </div>
 
         {/* Tab Switcher */}
-        <div className="flex items-center gap-1 bg-c5-cream p-1 rounded-xl border border-c5-beige">
+        <div className="flex items-center gap-1 bg-[#F7F3EB] p-1 rounded-xl border border-[#E8E2D9]">
           <button
             onClick={() => setActiveTab('products')}
-            className={`px-4 py-2 rounded-lg text-xs font-semibold transition ${
+            className={`px-3 py-1.5 rounded-lg text-xs font-medium transition cursor-pointer ${
               activeTab === 'products'
-                ? 'bg-c5-espresso text-c5-cream shadow-xs'
-                : 'text-c5-charcoal hover:text-black'
+                ? 'bg-[#3B2925] text-white shadow-xs'
+                : 'text-[#6E6862] hover:text-[#292929]'
             }`}
           >
             Products ({products.length})
           </button>
           <button
             onClick={() => setActiveTab('categories')}
-            className={`px-4 py-2 rounded-lg text-xs font-semibold transition ${
+            className={`px-3 py-1.5 rounded-lg text-xs font-medium transition cursor-pointer ${
               activeTab === 'categories'
-                ? 'bg-c5-espresso text-c5-cream shadow-xs'
-                : 'text-c5-charcoal hover:text-black'
+                ? 'bg-[#3B2925] text-white shadow-xs'
+                : 'text-[#6E6862] hover:text-[#292929]'
             }`}
           >
             Categories ({categories.length})
           </button>
           <button
             onClick={() => setActiveTab('modifiers')}
-            className={`px-4 py-2 rounded-lg text-xs font-semibold transition ${
+            className={`px-3 py-1.5 rounded-lg text-xs font-medium transition cursor-pointer ${
               activeTab === 'modifiers'
-                ? 'bg-c5-espresso text-c5-cream shadow-xs'
-                : 'text-c5-charcoal hover:text-black'
+                ? 'bg-[#3B2925] text-white shadow-xs'
+                : 'text-[#6E6862] hover:text-[#292929]'
             }`}
           >
-            Modifier Groups ({modifierGroups.length})
+            Modifiers ({modifierGroups.length})
           </button>
         </div>
       </div>
@@ -228,26 +260,26 @@ export const MenuManagementView: React.FC<MenuManagementViewProps> = ({
       {activeTab === 'products' && (
         <div className="space-y-4">
           <div className="flex flex-col sm:flex-row items-center justify-between gap-3">
-            {/* Category Filter Pills */}
-            <div className="flex items-center gap-2 overflow-x-auto w-full sm:w-auto">
+            {/* Category Filter */}
+            <div className="flex items-center gap-1.5 overflow-x-auto w-full sm:w-auto pb-1">
               <button
                 onClick={() => setSelectedCategoryFilter('all')}
-                className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition ${
+                className={`px-3 py-1 rounded-lg text-xs font-medium transition cursor-pointer ${
                   selectedCategoryFilter === 'all'
-                    ? 'bg-c5-espresso text-c5-cream'
-                    : 'bg-white border border-c5-beige text-c5-charcoal hover:bg-c5-cream'
+                    ? 'bg-[#3B2925] text-white shadow-xs'
+                    : 'bg-white border border-[#E8E2D9] text-[#6E6862] hover:bg-[#F7F3EB]'
                 }`}
               >
-                All Categories
+                All
               </button>
               {categories.map(c => (
                 <button
                   key={c.id}
                   onClick={() => setSelectedCategoryFilter(c.id)}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition whitespace-nowrap ${
+                  className={`px-3 py-1 rounded-lg text-xs font-medium transition whitespace-nowrap cursor-pointer ${
                     selectedCategoryFilter === c.id
-                      ? 'bg-c5-espresso text-c5-cream'
-                      : 'bg-white border border-c5-beige text-c5-charcoal hover:bg-c5-cream'
+                      ? 'bg-[#3B2925] text-white shadow-xs'
+                      : 'bg-white border border-[#E8E2D9] text-[#6E6862] hover:bg-[#F7F3EB]'
                   }`}
                 >
                   {c.name}
@@ -257,67 +289,64 @@ export const MenuManagementView: React.FC<MenuManagementViewProps> = ({
 
             <button
               onClick={handleOpenCreateProduct}
-              className="px-4 py-2 rounded-xl bg-c5-espresso text-c5-cream hover:bg-c5-espresso-dark text-xs font-bold transition flex items-center gap-1.5 shadow-xs shrink-0 self-end sm:self-auto"
+              className="px-4 py-2 rounded-xl bg-[#3B2925] hover:bg-[#2C1E1A] text-white text-xs font-medium transition flex items-center gap-1.5 shadow-xs cursor-pointer shrink-0 self-end sm:self-auto"
             >
-              <Plus className="w-4 h-4" />
-              <span>Add New Drink / Product</span>
+              <Plus className="w-3.5 h-3.5" />
+              <span>Add Product</span>
             </button>
           </div>
 
           {/* Products Table */}
-          <div className="bg-white rounded-2xl border border-c5-beige overflow-hidden shadow-xs">
+          <div className="bg-white rounded-xl border border-[#E8E2D9] overflow-hidden">
             <table className="w-full text-left text-xs">
-              <thead className="bg-c5-cream/60 border-b border-c5-beige text-c5-charcoal-muted uppercase text-[10px] font-bold tracking-wider">
+              <thead className="bg-[#FBF9F5] border-b border-[#E8E2D9] text-[#7A736C]">
                 <tr>
-                  <th className="py-3 px-4">SKU / Item Name</th>
-                  <th className="py-3 px-4">Category</th>
-                  <th className="py-3 px-4">Sizes & Prices (PHP)</th>
-                  <th className="py-3 px-4">Recipe (Inventory BOM)</th>
-                  <th className="py-3 px-4 text-center">Status</th>
-                  <th className="py-3 px-4 text-right">Actions</th>
+                  <th className="py-2.5 px-4 font-medium">Product Name</th>
+                  <th className="py-2.5 px-4 font-medium">Category</th>
+                  <th className="py-2.5 px-4 font-medium">Sizes & Prices</th>
+                  <th className="py-2.5 px-4 font-medium">Recipe BOM</th>
+                  <th className="py-2.5 px-4 font-medium text-center">Status</th>
+                  <th className="py-2.5 px-4 font-medium text-right">Actions</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-c5-beige/60">
+              <tbody className="divide-y divide-[#F7F3EB]">
                 {filteredProducts.map(product => {
                   const categoryName =
                     categories.find(c => c.id === product.categoryId)?.name || 'Unassigned';
                   return (
-                    <tr key={product.id} className="hover:bg-c5-cream/20 transition">
+                    <tr key={product.id} className="hover:bg-[#FAF7F2] transition">
                       <td className="py-3 px-4">
-                        <div className="font-bold text-c5-charcoal">{product.name}</div>
-                        <div className="text-[10px] font-mono text-c5-charcoal-light">
-                          {product.sku || 'NO-SKU'}
-                        </div>
+                        <div className="font-medium text-[#292929]">{product.name}</div>
+                        {product.sku && (
+                          <div className="text-[10px] font-mono text-[#9B948C]">
+                            {product.sku}
+                          </div>
+                        )}
+                      </td>
+                      <td className="py-3 px-4 text-[#6E6862]">
+                        {categoryName}
                       </td>
                       <td className="py-3 px-4">
-                        <span className="px-2 py-0.5 rounded-md bg-c5-cream border border-c5-beige text-c5-charcoal font-medium">
-                          {categoryName}
-                        </span>
-                      </td>
-                      <td className="py-3 px-4">
-                        <div className="space-y-1">
+                        <div className="space-y-0.5">
                           {product.variants.map(v => (
                             <div key={v.id} className="flex items-center gap-2">
-                              <span className="font-medium text-c5-charcoal">{v.name}:</span>
-                              <span className="font-mono font-bold text-c5-espresso">
+                              <span className="text-[#6E6862]">{v.name}:</span>
+                              <span className="font-mono font-medium text-[#3B2925]">
                                 {formatPHP(v.priceCents)}
-                              </span>
-                              <span className="text-[10px] text-c5-charcoal-light font-mono">
-                                (Cost: {formatPHP(v.costPriceCents)})
                               </span>
                             </div>
                           ))}
                         </div>
                       </td>
-                      <td className="py-3 px-4">
+                      <td className="py-3 px-4 text-[#7A736C]">
                         {product.recipes && Object.keys(product.recipes).length > 0 ? (
-                          <div className="space-y-1 text-[11px] text-c5-charcoal-muted">
+                          <div className="space-y-0.5 text-[11px]">
                             {Object.entries(product.recipes).map(([vId, ingredients]) => {
                               const variantName =
-                                product.variants.find(v => v.id === vId)?.name || 'Variant';
+                                product.variants.find(v => v.id === vId)?.name || 'Size';
                               return (
                                 <div key={vId}>
-                                  <span className="font-semibold text-c5-charcoal">
+                                  <span className="font-medium text-[#292929]">
                                     {variantName}:
                                   </span>{' '}
                                   {ingredients.map(i => `${i.quantityRequired}${i.unit} ${i.itemName}`).join(', ')}
@@ -326,37 +355,38 @@ export const MenuManagementView: React.FC<MenuManagementViewProps> = ({
                             })}
                           </div>
                         ) : (
-                          <span className="text-c5-charcoal-light italic text-[11px]">
-                            No auto-deduction recipe
+                          <span className="text-[#9B948C] italic text-[11px]">
+                            No auto-deduction
                           </span>
                         )}
                       </td>
                       <td className="py-3 px-4 text-center">
-                        <span
-                          className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
-                            product.isActive
-                              ? 'bg-emerald-100 text-emerald-800'
-                              : 'bg-gray-100 text-gray-600'
-                          }`}
-                        >
-                          {product.isActive ? 'Active' : 'Archived'}
+                        <span className="inline-flex items-center gap-1.5 text-xs">
+                          <span
+                            className={`w-1.5 h-1.5 rounded-full ${
+                              product.isActive ? 'bg-[#A8B5A0]' : 'bg-[#DDD4C7]'
+                            }`}
+                          />
+                          <span className="text-[#6E6862]">
+                            {product.isActive ? 'Active' : 'Archived'}
+                          </span>
                         </span>
                       </td>
                       <td className="py-3 px-4 text-right">
-                        <div className="flex items-center justify-end gap-1.5">
+                        <div className="flex items-center justify-end gap-1">
                           <button
                             onClick={() => handleEditProduct(product)}
-                            className="p-1.5 hover:bg-c5-cream rounded-lg text-c5-charcoal hover:text-c5-espresso transition"
-                            title="Edit Product"
+                            className="p-1 rounded-lg text-[#7A736C] hover:text-[#292929] hover:bg-[#F7F3EB] cursor-pointer"
+                            title="Edit"
                           >
-                            <Edit2 className="w-4 h-4" />
+                            <Edit2 className="w-3.5 h-3.5" />
                           </button>
                           <button
                             onClick={() => handleDeleteProduct(product.id)}
-                            className="p-1.5 hover:bg-rose-50 rounded-lg text-c5-charcoal-light hover:text-rose-600 transition"
+                            className="p-1 rounded-lg text-[#9B948C] hover:text-[#A25035] hover:bg-red-50 cursor-pointer"
                             title="Delete"
                           >
-                            <Trash2 className="w-4 h-4" />
+                            <Trash2 className="w-3.5 h-3.5" />
                           </button>
                         </div>
                       </td>
@@ -371,35 +401,35 @@ export const MenuManagementView: React.FC<MenuManagementViewProps> = ({
 
       {/* CATEGORIES TAB */}
       {activeTab === 'categories' && (
-        <div className="space-y-4 max-w-2xl">
-          <div className="bg-white p-4 rounded-2xl border border-c5-beige shadow-xs flex items-center gap-3">
+        <div className="space-y-4 max-w-xl">
+          <div className="bg-white p-3 rounded-xl border border-[#E8E2D9] flex items-center gap-2">
             <input
               type="text"
-              placeholder="New Category Name (e.g. Filter Coffee, Seasonal Drinks)"
+              placeholder="New Category Name (e.g. Cold Brew, Pastries)"
               value={newCategoryName}
               onChange={e => setNewCategoryName(e.target.value)}
-              className="flex-1 bg-c5-cream/50 border border-c5-beige rounded-xl px-3.5 py-2 text-xs text-c5-charcoal outline-hidden focus:border-c5-espresso"
+              className="flex-1 bg-white border border-[#E8E2D9] rounded-lg px-3 py-1.5 text-xs text-[#292929] outline-hidden focus:border-[#3B2925]"
             />
             <button
               onClick={handleAddCategory}
-              className="px-4 py-2 bg-c5-espresso text-c5-cream rounded-xl text-xs font-bold hover:bg-c5-espresso-dark transition flex items-center gap-1.5"
+              className="px-3 py-1.5 bg-[#3B2925] text-white rounded-lg text-xs font-medium hover:bg-[#2C1E1A] transition flex items-center gap-1 cursor-pointer"
             >
-              <Plus className="w-4 h-4" />
-              <span>Add Category</span>
+              <Plus className="w-3.5 h-3.5" />
+              <span>Add</span>
             </button>
           </div>
 
-          <div className="bg-white rounded-2xl border border-c5-beige overflow-hidden shadow-xs divide-y divide-c5-beige/60">
+          <div className="bg-white rounded-xl border border-[#E8E2D9] divide-y divide-[#F7F3EB]">
             {categories.map((cat, idx) => (
-              <div key={cat.id} className="p-4 flex items-center justify-between">
+              <div key={cat.id} className="p-3 flex items-center justify-between">
                 <div className="flex items-center gap-3">
-                  <span className="font-mono text-xs font-bold text-c5-charcoal-muted">
+                  <span className="font-mono text-xs text-[#9B948C]">
                     #{idx + 1}
                   </span>
                   <div>
-                    <h4 className="text-xs font-bold text-c5-charcoal">{cat.name}</h4>
-                    <span className="text-[10px] text-c5-charcoal-muted">
-                      {products.filter(p => p.categoryId === cat.id).length} products assigned
+                    <h4 className="text-xs font-medium text-[#292929]">{cat.name}</h4>
+                    <span className="text-[10px] text-[#7A736C]">
+                      {products.filter(p => p.categoryId === cat.id).length} products
                     </span>
                   </div>
                 </div>
@@ -415,26 +445,27 @@ export const MenuManagementView: React.FC<MenuManagementViewProps> = ({
           {modifierGroups.map(grp => (
             <div
               key={grp.id}
-              className="bg-white p-5 rounded-2xl border border-c5-beige shadow-xs space-y-3"
+              className="bg-white p-4 rounded-xl border border-[#E8E2D9] space-y-3"
             >
-              <div className="flex items-center justify-between border-b border-c5-beige/60 pb-2">
+              <div className="flex items-center justify-between border-b border-[#F7F3EB] pb-2">
                 <div className="flex items-center gap-2">
-                  <Sliders className="w-4 h-4 text-c5-espresso" />
-                  <h4 className="text-xs font-bold text-c5-charcoal">{grp.name}</h4>
+                  <Sliders className="w-3.5 h-3.5 text-[#3B2925]" />
+                  <h4 className="text-xs font-semibold text-[#292929]">{grp.name}</h4>
                 </div>
-                <span className="text-[10px] text-c5-charcoal-muted">
-                  Max: {grp.maxSelection} selection
+                <span className="text-[10px] text-[#7A736C]">
+                  Max: {grp.maxSelection}
                 </span>
               </div>
-              <div className="space-y-2">
-                {grp.modifiers.map(m => (
+
+              <div className="space-y-1">
+                {grp.modifiers.map(mod => (
                   <div
-                    key={m.id}
-                    className="flex items-center justify-between p-2 rounded-lg bg-c5-cream/40 border border-c5-beige/60 text-xs"
+                    key={mod.id}
+                    className="flex items-center justify-between text-xs py-1 px-2 rounded-lg bg-[#FBF9F5]"
                   >
-                    <span className="font-medium text-c5-charcoal">{m.name}</span>
-                    <span className="font-mono font-bold text-c5-espresso">
-                      {m.priceCents > 0 ? `+${formatPHP(m.priceCents)}` : '₱0.00 (Default)'}
+                    <span className="text-[#292929]">{mod.name}</span>
+                    <span className="font-mono text-[#3B2925]">
+                      {mod.priceCents > 0 ? `+${formatPHP(mod.priceCents)}` : 'Free'}
                     </span>
                   </div>
                 ))}
@@ -446,32 +477,31 @@ export const MenuManagementView: React.FC<MenuManagementViewProps> = ({
 
       {/* EDIT / CREATE PRODUCT MODAL */}
       {isProductModalOpen && editingProduct && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4 overflow-y-auto">
-          <div className="w-full max-w-2xl bg-white rounded-2xl shadow-2xl border border-c5-beige overflow-hidden my-6">
-            <div className="bg-c5-espresso text-c5-cream p-5 flex items-center justify-between">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-2xs p-4">
+          <div className="w-full max-w-xl bg-white rounded-2xl shadow-xl border border-[#E8E2D9] overflow-hidden my-6">
+            <div className="p-4 border-b border-[#E8E2D9] flex items-center justify-between">
               <div>
-                <h3 className="font-bold text-base">
+                <h3 className="font-semibold text-sm text-[#292929]">
                   {editingProduct.id.includes('prod-') && !products.some(p => p.id === editingProduct.id)
                     ? 'Add New Product'
-                    : 'Edit Product & Recipe'}
+                    : 'Edit Product'}
                 </h3>
-                <p className="text-xs text-c5-beige/80 mt-0.5">
-                  Set prices in PHP and link inventory items for automatic stock deduction
+                <p className="text-xs text-[#7A736C] mt-0.5">
+                  Set prices and recipe ingredients
                 </p>
               </div>
               <button
                 onClick={() => setIsProductModalOpen(false)}
-                className="p-1 rounded-lg hover:bg-white/10 text-c5-beige hover:text-white"
+                className="p-1 rounded-lg text-[#7A736C] hover:text-[#292929] cursor-pointer"
               >
-                <X className="w-5 h-5" />
+                <X className="w-4 h-4" />
               </button>
             </div>
 
-            <div className="p-6 space-y-5 max-h-[75vh] overflow-y-auto">
-              {/* Product Basic Fields */}
-              <div className="grid grid-cols-2 gap-4">
+            <div className="p-5 space-y-4 max-h-[70vh] overflow-y-auto text-xs">
+              <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="text-xs font-bold uppercase tracking-wider text-c5-charcoal block mb-1">
+                  <label className="text-xs font-medium text-[#292929] block mb-1">
                     Product Name *
                   </label>
                   <input
@@ -480,12 +510,12 @@ export const MenuManagementView: React.FC<MenuManagementViewProps> = ({
                     onChange={e =>
                       setEditingProduct({ ...editingProduct, name: e.target.value })
                     }
-                    placeholder="e.g. Spanish Latte, Cold Brew"
-                    className="w-full bg-white border border-c5-beige rounded-xl px-3 py-2 text-xs text-c5-charcoal outline-hidden focus:border-c5-espresso"
+                    placeholder="e.g. Spanish Latte"
+                    className="w-full bg-white border border-[#E8E2D9] rounded-xl px-3 py-1.5 text-xs text-[#292929] outline-hidden focus:border-[#3B2925]"
                   />
                 </div>
                 <div>
-                  <label className="text-xs font-bold uppercase tracking-wider text-c5-charcoal block mb-1">
+                  <label className="text-xs font-medium text-[#292929] block mb-1">
                     Category *
                   </label>
                   <select
@@ -493,7 +523,7 @@ export const MenuManagementView: React.FC<MenuManagementViewProps> = ({
                     onChange={e =>
                       setEditingProduct({ ...editingProduct, categoryId: e.target.value })
                     }
-                    className="w-full bg-white border border-c5-beige rounded-xl px-3 py-2 text-xs text-c5-charcoal outline-hidden focus:border-c5-espresso"
+                    className="w-full bg-white border border-[#E8E2D9] rounded-xl px-3 py-1.5 text-xs text-[#292929] outline-hidden focus:border-[#3B2925]"
                   >
                     {categories.map(c => (
                       <option key={c.id} value={c.id}>
@@ -505,7 +535,7 @@ export const MenuManagementView: React.FC<MenuManagementViewProps> = ({
               </div>
 
               <div>
-                <label className="text-xs font-bold uppercase tracking-wider text-c5-charcoal block mb-1">
+                <label className="text-xs font-medium text-[#292929] block mb-1">
                   Description
                 </label>
                 <input
@@ -514,159 +544,91 @@ export const MenuManagementView: React.FC<MenuManagementViewProps> = ({
                   onChange={e =>
                     setEditingProduct({ ...editingProduct, description: e.target.value })
                   }
-                  placeholder="Notes, ingredients, flavor profile..."
-                  className="w-full bg-white border border-c5-beige rounded-xl px-3 py-2 text-xs text-c5-charcoal outline-hidden focus:border-c5-espresso"
+                  placeholder="Ingredients or flavor profile..."
+                  className="w-full bg-white border border-[#E8E2D9] rounded-xl px-3 py-1.5 text-xs text-[#292929] outline-hidden focus:border-[#3B2925]"
                 />
               </div>
 
               <div>
-                <label className="text-xs font-bold uppercase tracking-wider text-c5-charcoal block mb-1">
-                  Product Photography (Image URL)
+                <label className="text-xs font-medium text-[#292929] block mb-1">
+                  Image URL (Optional)
                 </label>
-                <div className="flex gap-2 mb-2">
-                  <input
-                    type="text"
-                    value={editingProduct.imageUrl || ''}
-                    onChange={e =>
-                      setEditingProduct({ ...editingProduct, imageUrl: e.target.value })
-                    }
-                    placeholder="/src/assets/images/... or image URL"
-                    className="flex-1 bg-white border border-c5-beige rounded-xl px-3 py-2 text-xs text-c5-charcoal font-mono outline-hidden focus:border-c5-espresso"
-                  />
-                  {editingProduct.imageUrl && (
-                    <button
-                      type="button"
-                      onClick={() => setEditingProduct({ ...editingProduct, imageUrl: undefined })}
-                      className="px-3 py-1 bg-c5-cream rounded-xl text-xs text-c5-charcoal hover:bg-c5-beige"
-                    >
-                      Clear
-                    </button>
-                  )}
-                </div>
-                <div className="flex flex-wrap gap-1.5 items-center text-[10px]">
-                  <span className="text-c5-charcoal-muted">Gen Z Presets:</span>
-                  <button
-                    type="button"
-                    onClick={() =>
-                      setEditingProduct({
-                        ...editingProduct,
-                        imageUrl: '/src/assets/images/product_spanish_latte_1791168309026.jpg'
-                      })
-                    }
-                    className="px-2 py-0.5 rounded bg-c5-cream border border-c5-beige hover:bg-c5-beige text-c5-charcoal font-medium"
-                  >
-                    Iced Spanish Latte
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() =>
-                      setEditingProduct({
-                        ...editingProduct,
-                        imageUrl: '/src/assets/images/product_dirty_matcha_1791168321790.jpg'
-                      })
-                    }
-                    className="px-2 py-0.5 rounded bg-c5-cream border border-c5-beige hover:bg-c5-beige text-c5-charcoal font-medium"
-                  >
-                    Dirty Matcha
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() =>
-                      setEditingProduct({
-                        ...editingProduct,
-                        imageUrl: '/src/assets/images/product_artisan_pastry_1791168332615.jpg'
-                      })
-                    }
-                    className="px-2 py-0.5 rounded bg-c5-cream border border-c5-beige hover:bg-c5-beige text-c5-charcoal font-medium"
-                  >
-                    Artisan Croissant
-                  </button>
-                </div>
+                <input
+                  type="text"
+                  value={editingProduct.imageUrl || ''}
+                  onChange={e =>
+                    setEditingProduct({ ...editingProduct, imageUrl: e.target.value })
+                  }
+                  placeholder="https://... or image asset path"
+                  className="w-full bg-white border border-[#E8E2D9] rounded-xl px-3 py-1.5 text-xs font-mono text-[#292929] outline-hidden focus:border-[#3B2925]"
+                />
               </div>
 
-              {/* Sizes / Variants */}
-              <div className="space-y-3 pt-2 border-t border-c5-beige">
-                <div className="flex items-center justify-between">
-                  <label className="text-xs font-bold uppercase tracking-wider text-c5-charcoal">
-                    Sizes, Variants & Pricing
+              {/* Sizes and Variants */}
+              <div className="pt-2 border-t border-[#E8E2D9]">
+                <div className="flex items-center justify-between mb-2">
+                  <label className="text-xs font-medium text-[#292929]">
+                    Size Variants & Pricing
                   </label>
                   <button
                     type="button"
                     onClick={handleAddVariant}
-                    className="text-xs font-bold text-c5-espresso hover:underline flex items-center gap-1"
+                    className="text-[11px] text-[#3B2925] font-medium hover:underline flex items-center gap-1 cursor-pointer"
                   >
-                    <Plus className="w-3.5 h-3.5" />
+                    <Plus className="w-3 h-3" />
                     <span>Add Size</span>
                   </button>
                 </div>
 
                 <div className="space-y-3">
-                  {editingProduct.variants.map((v, vIdx) => (
+                  {editingProduct.variants.map((v, idx) => (
                     <div
                       key={v.id}
-                      className="p-3.5 bg-c5-cream/40 rounded-xl border border-c5-beige space-y-3"
+                      className="p-3 bg-[#FBF9F5] rounded-xl border border-[#E8E2D9] space-y-2.5"
                     >
-                      <div className="grid grid-cols-3 gap-3">
-                        <div>
-                          <label className="text-[10px] font-bold text-c5-charcoal-muted uppercase">
-                            Variant Name
-                          </label>
-                          <input
-                            type="text"
-                            value={v.name}
-                            onChange={e => {
-                              const updated = [...editingProduct.variants];
-                              updated[vIdx].name = e.target.value;
-                              setEditingProduct({ ...editingProduct, variants: updated });
-                            }}
-                            placeholder="e.g. 12oz Hot, 16oz Iced"
-                            className="w-full bg-white border border-c5-beige rounded-lg px-2.5 py-1.5 text-xs font-semibold text-c5-charcoal"
-                          />
-                        </div>
-                        <div>
-                          <label className="text-[10px] font-bold text-c5-charcoal-muted uppercase">
-                            Selling Price (PHP)
-                          </label>
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="text"
+                          value={v.name}
+                          onChange={e => {
+                            const updated = editingProduct.variants.map(item =>
+                              item.id === v.id ? { ...item, name: e.target.value } : item
+                            );
+                            setEditingProduct({ ...editingProduct, variants: updated });
+                          }}
+                          placeholder="Size (e.g. 12oz Hot)"
+                          className="flex-1 bg-white border border-[#E8E2D9] rounded-lg px-2.5 py-1 text-xs"
+                        />
+                        <div className="flex items-center gap-1">
+                          <span className="text-[#7A736C]">₱</span>
                           <input
                             type="number"
-                            step="1"
                             value={v.priceCents / 100}
                             onChange={e => {
-                              const updated = [...editingProduct.variants];
-                              updated[vIdx].priceCents = parsePHPAmountToCents(
-                                parseFloat(e.target.value) || 0
+                              const val = parsePHPAmountToCents(parseFloat(e.target.value) || 0);
+                              const updated = editingProduct.variants.map(item =>
+                                item.id === v.id ? { ...item, priceCents: val } : item
                               );
                               setEditingProduct({ ...editingProduct, variants: updated });
                             }}
-                            className="w-full bg-white border border-c5-beige rounded-lg px-2.5 py-1.5 text-xs font-mono font-bold text-c5-charcoal"
+                            className="w-20 bg-white border border-[#E8E2D9] rounded-lg px-2 py-1 text-xs font-mono text-right"
                           />
                         </div>
-                        <div>
-                          <label className="text-[10px] font-bold text-c5-charcoal-muted uppercase">
-                            Cost Price (PHP)
-                          </label>
-                          <input
-                            type="number"
-                            step="1"
-                            value={v.costPriceCents / 100}
-                            onChange={e => {
-                              const updated = [...editingProduct.variants];
-                              updated[vIdx].costPriceCents = parsePHPAmountToCents(
-                                parseFloat(e.target.value) || 0
-                              );
-                              setEditingProduct({ ...editingProduct, variants: updated });
-                            }}
-                            className="w-full bg-white border border-c5-beige rounded-lg px-2.5 py-1.5 text-xs font-mono text-c5-charcoal"
-                          />
-                        </div>
+                        {editingProduct.variants.length > 1 && (
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveVariant(v.id)}
+                            className="text-[#9B948C] hover:text-[#A25035] p-1 cursor-pointer"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        )}
                       </div>
 
-                      {/* Recipe Inventory Link for this Variant */}
-                      <div className="pt-2 border-t border-c5-beige/60">
+                      {/* Recipe Linkage for this variant */}
+                      <div className="pt-2 border-t border-[#F0EAE1]">
                         <div className="flex items-center justify-between mb-1.5">
-                          <span className="text-[10px] font-bold text-c5-charcoal uppercase tracking-wider">
-                            Recipe BOM Deductions for {v.name}:
-                          </span>
+                          <span className="text-[11px] text-[#7A736C]">Recipe Ingredients:</span>
                           <select
                             onChange={e => {
                               if (e.target.value) {
@@ -674,12 +636,10 @@ export const MenuManagementView: React.FC<MenuManagementViewProps> = ({
                                 e.target.value = '';
                               }
                             }}
-                            className="text-[11px] bg-white border border-c5-beige rounded-lg px-2 py-0.5 text-c5-charcoal"
+                            className="text-[11px] bg-white border border-[#E8E2D9] rounded px-1.5 py-0.5 text-[#292929]"
                             defaultValue=""
                           >
-                            <option value="" disabled>
-                              + Link Inventory Item...
-                            </option>
+                            <option value="" disabled>+ Link Raw Material</option>
                             {inventoryItems.map(inv => (
                               <option key={inv.id} value={inv.id}>
                                 {inv.name} ({inv.unit})
@@ -689,14 +649,14 @@ export const MenuManagementView: React.FC<MenuManagementViewProps> = ({
                         </div>
 
                         {editingProduct.recipes?.[v.id]?.length ? (
-                          <div className="space-y-1.5">
+                          <div className="space-y-1">
                             {editingProduct.recipes[v.id].map(ing => (
                               <div
                                 key={ing.id}
-                                className="flex items-center justify-between bg-white px-2.5 py-1.5 rounded-lg border border-c5-beige/80 text-xs"
+                                className="flex items-center justify-between bg-white px-2 py-1 rounded border border-[#E8E2D9] text-[11px]"
                               >
-                                <span className="font-medium text-c5-charcoal">{ing.itemName}</span>
-                                <div className="flex items-center gap-2">
+                                <span className="text-[#292929]">{ing.itemName}</span>
+                                <div className="flex items-center gap-1.5">
                                   <input
                                     type="number"
                                     step="0.1"
@@ -714,25 +674,23 @@ export const MenuManagementView: React.FC<MenuManagementViewProps> = ({
                                         }
                                       });
                                     }}
-                                    className="w-16 bg-c5-cream border border-c5-beige rounded px-1.5 py-0.5 text-xs text-right font-mono"
+                                    className="w-14 bg-[#F7F3EB] border border-[#E8E2D9] rounded px-1 py-0.5 text-right font-mono text-xs"
                                   />
-                                  <span className="text-[10px] text-c5-charcoal-muted">
-                                    {ing.unit}
-                                  </span>
+                                  <span className="text-[10px] text-[#7A736C]">{ing.unit}</span>
                                   <button
                                     type="button"
                                     onClick={() => handleRemoveRecipeIngredient(v.id, ing.id)}
-                                    className="text-c5-charcoal-light hover:text-rose-600 p-0.5"
+                                    className="text-[#9B948C] hover:text-[#A25035] p-0.5 cursor-pointer"
                                   >
-                                    <X className="w-3.5 h-3.5" />
+                                    <X className="w-3 h-3" />
                                   </button>
                                 </div>
                               </div>
                             ))}
                           </div>
                         ) : (
-                          <p className="text-[10px] text-c5-charcoal-light italic">
-                            No raw inventory items linked to this size.
+                          <p className="text-[10px] text-[#9B948C] italic">
+                            No materials linked to this size.
                           </p>
                         )}
                       </div>
@@ -743,22 +701,42 @@ export const MenuManagementView: React.FC<MenuManagementViewProps> = ({
             </div>
 
             {/* Modal Actions */}
-            <div className="p-4 bg-c5-cream/40 border-t border-c5-beige flex justify-end gap-3">
-              <button
-                type="button"
-                onClick={() => setIsProductModalOpen(false)}
-                className="px-4 py-2 rounded-xl text-xs font-semibold text-c5-charcoal hover:bg-c5-beige transition"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={handleSaveProduct}
-                className="px-5 py-2.5 rounded-xl text-xs font-bold bg-c5-espresso text-c5-cream hover:bg-c5-espresso-dark transition shadow-xs flex items-center gap-1.5"
-              >
-                <Check className="w-4 h-4" />
-                <span>Save Changes</span>
-              </button>
+            <div className="p-4 bg-[#FBF9F5] border-t border-[#E8E2D9] space-y-3">
+              {saveError && (
+                <div className="p-2.5 rounded-lg bg-red-50 border border-red-200 text-red-700 text-xs flex items-center gap-2">
+                  <AlertCircle className="w-3.5 h-3.5 shrink-0 text-red-600" />
+                  <span>{saveError}</span>
+                </div>
+              )}
+
+              <div className="flex justify-end gap-2">
+                <button
+                  type="button"
+                  disabled={isSavingProduct}
+                  onClick={() => setIsProductModalOpen(false)}
+                  className="px-4 py-2 rounded-xl text-xs font-medium text-[#6E6862] hover:bg-[#EFE9DF] cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  disabled={isSavingProduct}
+                  onClick={handleSaveProduct}
+                  className="px-4 py-2 rounded-xl text-xs font-medium bg-[#3B2925] text-white hover:bg-[#2C1E1A] transition shadow-xs flex items-center gap-1.5 cursor-pointer disabled:opacity-60"
+                >
+                  {isSavingProduct ? (
+                    <>
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      <span>Saving...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Check className="w-3.5 h-3.5" />
+                      <span>Save Product</span>
+                    </>
+                  )}
+                </button>
+              </div>
             </div>
           </div>
         </div>

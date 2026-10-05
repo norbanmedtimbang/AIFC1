@@ -231,6 +231,13 @@ export class LocalStorageDB {
     return { ...this.state };
   }
 
+  public syncFromCloud(cloudState: any): void {
+    this.state = {
+      ...this.state,
+      ...cloudState
+    };
+  }
+
   // Current User Operations
   public getCurrentUser(): User {
     const user = this.state.users.find(u => u.id === this.state.currentUserId);
