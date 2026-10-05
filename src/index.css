@@ -1,68 +1,55 @@
 @import "tailwindcss";
 
 @theme {
-  --font-display: "Syne", sans-serif;
+  --font-display: "Plus Jakarta Sans", sans-serif;
   --font-sans: "Plus Jakarta Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
   --font-mono: "JetBrains Mono", monospace;
 
-  /* c5- prefixed tokens */
-  --color-c5-espresso: #14100E;
-  --color-c5-espresso-dark: #0A0807;
-  --color-c5-espresso-light: #2A211D;
-  --color-c5-cream: #FAF7F2;
-  --color-c5-cream-light: #FFFFFF;
-  --color-c5-beige: #E6DFD5;
-  --color-c5-beige-dark: #CFC7B9;
-  --color-c5-sage: #6B8E5F;
-  --color-c5-lime: #B4EE10;
-  --color-c5-lime-dark: #9CD505;
-  --color-c5-terracotta: #E05A36;
-  --color-c5-charcoal: #181513;
-  --color-c5-charcoal-muted: #4B4540;
-  --color-c5-charcoal-light: #78716C;
+  --color-caramel: #C68A57;
+  --color-caramel-dark: #AC7140;
+  --color-caramel-light: #FCEFE5;
+  --color-caramel-hover: #B67845;
+  --color-sand: #F5EBE1;
+  --color-sand-light: #FBF6F0;
+  --color-sand-dark: #EADECF;
+  --color-warm-charcoal: #2B2521;
+  --color-warm-muted: #7E726A;
+  --color-warm-border: #EFE4D9;
+  --color-badge-orange: #E67E44;
 
-  /* Non-prefixed standard tokens */
-  --color-espresso: #14100E;
-  --color-espresso-dark: #0A0807;
-  --color-espresso-light: #2A211D;
-  --color-cream: #FAF7F2;
+  /* Legacy tokens mapped to the Purr'Coffee palette */
+  --color-espresso: #C68A57;
+  --color-espresso-dark: #AC7140;
+  --color-espresso-light: #FCEFE5;
+  --color-cream: #F5EBE1;
   --color-cream-light: #FFFFFF;
-  --color-beige: #E6DFD5;
-  --color-beige-dark: #CFC7B9;
-  --color-sage: #6B8E5F;
-  --color-lime: #B4EE10;
-  --color-terracotta: #E05A36;
-  --color-charcoal: #181513;
-  --color-charcoal-muted: #4B4540;
-  --color-charcoal-light: #78716C;
+  --color-beige: #EFE4D9;
+  --color-beige-dark: #DECFC2;
+  --color-terracotta: #E67E44;
+  --color-charcoal: #2B2521;
+  --color-charcoal-muted: #7E726A;
+  --color-charcoal-light: #A59B93;
 }
 
 @layer base {
-  :root {
-    --c5-espresso: #14100E;
-    --c5-espresso-dark: #0A0807;
-    --c5-cream: #FAF7F2;
-    --c5-beige: #E6DFD5;
-    --c5-lime: #B4EE10;
-    --c5-charcoal: #181513;
-    --c5-charcoal-muted: #4B4540;
-  }
-
   body {
-    background-color: #FAF7F2;
-    color: #181513;
-    font-family: var(--font-sans);
+    background-color: #F5EBE1;
+    background-image: radial-gradient(#EADECF 0.75px, transparent 0.75px), radial-gradient(#EADECF 0.75px, #F5EBE1 0.75px);
+    background-size: 30px 30px;
+    background-position: 0 0, 15px 15px;
+    color: #2B2521;
+    font-family: "Plus Jakarta Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
     user-select: none;
     -webkit-user-select: none;
     margin: 0;
     padding: 0;
     overflow-x: hidden;
     letter-spacing: -0.01em;
-    -webkit-font-smoothing: antialiased;
   }
 
-  h1, h2, h3, .font-display {
-    font-family: var(--font-display);
+  h1, h2, h3, h4, h5, h6, .font-display {
+    font-family: "Plus Jakarta Sans", sans-serif;
+    font-weight: 700;
     letter-spacing: -0.02em;
   }
 
@@ -72,37 +59,20 @@
   }
 }
 
-/* Fallback utilities to guarantee 100% visible, high-contrast text and styling */
-.bg-c5-espresso { background-color: #14100E !important; }
-.bg-c5-espresso-dark { background-color: #0A0807 !important; }
-.bg-c5-espresso-light { background-color: #2A211D !important; }
-.text-c5-espresso { color: #14100E !important; }
-.bg-c5-lime { background-color: #B4EE10 !important; }
-.text-c5-lime { color: #B4EE10 !important; }
-.bg-c5-cream { background-color: #FAF7F2 !important; }
-.bg-c5-cream-light { background-color: #FFFFFF !important; }
-.text-c5-cream { color: #FAF7F2 !important; }
-.border-c5-beige { border-color: #E6DFD5 !important; }
-.border-c5-beige-dark { border-color: #CFC7B9 !important; }
-.text-c5-charcoal { color: #181513 !important; }
-.text-c5-charcoal-muted { color: #4B4540 !important; }
-.text-c5-charcoal-light { color: #78716C !important; }
-.text-c5-beige { color: #E6DFD5 !important; }
-
-/* Custom tactile Gen Z scrollbars */
+/* Custom smooth scrollbars */
 ::-webkit-scrollbar {
   width: 6px;
   height: 6px;
 }
 ::-webkit-scrollbar-track {
-  background: #FAF7F2;
+  background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: #D4CBBD;
+  background: #DECFC2;
   border-radius: 9999px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: #4B4540;
+  background: #C68A57;
 }
 
 /* Thermal receipt printable styles */

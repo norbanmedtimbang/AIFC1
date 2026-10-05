@@ -20,8 +20,8 @@ import {
   OrderType
 } from '../types';
 
-const STORAGE_KEY = 'c5isr_pos_offline_db_v3_clean';
-const DB_VERSION = '3.0.0';
+const STORAGE_KEY = 'c5isr_pos_offline_db_v2_clean';
+const DB_VERSION = '2.0.0';
 
 export interface DatabaseState {
   version: string;
@@ -73,15 +73,19 @@ const initialUsers: User[] = [
 ];
 
 const initialCategories: Category[] = [
-  { id: 'cat-1', name: 'Espresso & Coffee', displayOrder: 1, colorCode: '#3B2925' },
-  { id: 'cat-2', name: 'Specialty Lattes', displayOrder: 2, colorCode: '#523B36' },
-  { id: 'cat-3', name: 'Cold Brew & Signatures', displayOrder: 3, colorCode: '#A8B5A0' },
-  { id: 'cat-4', name: 'Non-Coffee & Teas', displayOrder: 4, colorCode: '#8E9E85' },
-  { id: 'cat-5', name: 'Pastries & Food', displayOrder: 5, colorCode: '#D4C7B5' },
-  { id: 'cat-6', name: 'Retail Beans & Merch', displayOrder: 6, colorCode: '#292929' }
+  { id: 'cat-1', name: 'Coffee', displayOrder: 1, colorCode: '#C68A57' },
+  { id: 'cat-2', name: 'Non Coffee', displayOrder: 2, colorCode: '#8E9E85' },
+  { id: 'cat-3', name: 'Food', displayOrder: 3, colorCode: '#D4C7B5' },
+  { id: 'cat-4', name: 'Snack', displayOrder: 4, colorCode: '#C29B7F' },
+  { id: 'cat-5', name: 'Dessert', displayOrder: 5, colorCode: '#E4A882' }
 ];
 
-const initialInventory: InventoryItem[] = [];
+const initialInventory: InventoryItem[] = [
+  { id: 'inv-beans-house', sku: 'RAW-BEAN-ESP', name: 'House Espresso Blend Beans', unit: 'grams', currentStock: 8500, minThreshold: 2000, costPerUnitCents: 120, updatedAt: new Date().toISOString() },
+  { id: 'inv-milk-fresh', sku: 'RAW-MILK-WHOLE', name: 'Fresh Whole Dairy Milk', unit: 'ml', currentStock: 18000, minThreshold: 4000, costPerUnitCents: 12, updatedAt: new Date().toISOString() },
+  { id: 'inv-syrup-vanilla', sku: 'RAW-SYR-VAN', name: 'Artisan Vanilla Syrup', unit: 'ml', currentStock: 3200, minThreshold: 500, costPerUnitCents: 45, updatedAt: new Date().toISOString() },
+  { id: 'inv-cups-16oz', sku: 'PKG-CUP-16', name: '16oz Biodegradable Cups', unit: 'pcs', currentStock: 450, minThreshold: 80, costPerUnitCents: 450, updatedAt: new Date().toISOString() }
+];
 
 const initialModifierGroups: ModifierGroup[] = [
   {
@@ -122,7 +126,112 @@ const initialModifierGroups: ModifierGroup[] = [
   }
 ];
 
-const initialProducts: Product[] = [];
+const initialProducts: Product[] = [
+  {
+    id: 'prod-cappuccino',
+    categoryId: 'cat-1',
+    sku: 'COF-CAP',
+    name: 'Cappuccino',
+    description: 'Entice in rich coffee with small and home made cappuccino foam.',
+    imageUrl: '/src/assets/images/cappuccino_drink_1791171598605.jpg',
+    isActive: true,
+    displayOrder: 1,
+    modifierGroupIds: ['modgrp-1', 'modgrp-2'],
+    variants: [
+      { id: 'var-cap-s', productId: 'prod-cappuccino', name: 'Small', priceCents: 15000, costPriceCents: 4500, isActive: true },
+      { id: 'var-cap-l', productId: 'prod-cappuccino', name: 'Large', priceCents: 18000, costPriceCents: 5500, isActive: true }
+    ],
+    recipes: {
+      'var-cap-s': [
+        { id: 'rec-cap-s-1', inventoryItemId: 'inv-beans-house', itemName: 'House Espresso Blend Beans', unit: 'grams', quantityRequired: 18 },
+        { id: 'rec-cap-s-2', inventoryItemId: 'inv-milk-fresh', itemName: 'Fresh Whole Dairy Milk', unit: 'ml', quantityRequired: 160 },
+        { id: 'rec-cap-s-3', inventoryItemId: 'inv-cups-16oz', itemName: '16oz Biodegradable Cups', unit: 'pcs', quantityRequired: 1 }
+      ],
+      'var-cap-l': [
+        { id: 'rec-cap-l-1', inventoryItemId: 'inv-beans-house', itemName: 'House Espresso Blend Beans', unit: 'grams', quantityRequired: 22 },
+        { id: 'rec-cap-l-2', inventoryItemId: 'inv-milk-fresh', itemName: 'Fresh Whole Dairy Milk', unit: 'ml', quantityRequired: 220 },
+        { id: 'rec-cap-l-3', inventoryItemId: 'inv-cups-16oz', itemName: '16oz Biodegradable Cups', unit: 'pcs', quantityRequired: 1 }
+      ]
+    }
+  },
+  {
+    id: 'prod-latte',
+    categoryId: 'cat-1',
+    sku: 'COF-LAT',
+    name: 'Coffee Latte',
+    description: 'Enticing coffee with sweet microfoam poured over chilled fresh milk.',
+    imageUrl: '/src/assets/images/iced_latte_drink_1791171609455.jpg',
+    isActive: true,
+    displayOrder: 2,
+    modifierGroupIds: ['modgrp-1', 'modgrp-2'],
+    variants: [
+      { id: 'var-lat-s', productId: 'prod-latte', name: 'Small', priceCents: 16000, costPriceCents: 4800, isActive: true },
+      { id: 'var-lat-l', productId: 'prod-latte', name: 'Large', priceCents: 19000, costPriceCents: 5800, isActive: true }
+    ],
+    recipes: {
+      'var-lat-s': [
+        { id: 'rec-lat-s-1', inventoryItemId: 'inv-beans-house', itemName: 'House Espresso Blend Beans', unit: 'grams', quantityRequired: 18 },
+        { id: 'rec-lat-s-2', inventoryItemId: 'inv-milk-fresh', itemName: 'Fresh Whole Dairy Milk', unit: 'ml', quantityRequired: 180 },
+        { id: 'rec-lat-s-3', inventoryItemId: 'inv-cups-16oz', itemName: '16oz Biodegradable Cups', unit: 'pcs', quantityRequired: 1 }
+      ],
+      'var-lat-l': [
+        { id: 'rec-lat-l-1', inventoryItemId: 'inv-beans-house', itemName: 'House Espresso Blend Beans', unit: 'grams', quantityRequired: 24 },
+        { id: 'rec-lat-l-2', inventoryItemId: 'inv-milk-fresh', itemName: 'Fresh Whole Dairy Milk', unit: 'ml', quantityRequired: 250 },
+        { id: 'rec-lat-l-3', inventoryItemId: 'inv-cups-16oz', itemName: '16oz Biodegradable Cups', unit: 'pcs', quantityRequired: 1 }
+      ]
+    }
+  },
+  {
+    id: 'prod-americano',
+    categoryId: 'cat-1',
+    sku: 'COF-AME',
+    name: 'Americano',
+    description: 'Fast extraction recent and clean specialty roast coffee over chilled water.',
+    imageUrl: '/src/assets/images/americano_iced_drink_1791171619230.jpg',
+    isActive: true,
+    displayOrder: 3,
+    modifierGroupIds: ['modgrp-2'],
+    variants: [
+      { id: 'var-ame-s', productId: 'prod-americano', name: 'Small', priceCents: 15500, costPriceCents: 3500, isActive: true },
+      { id: 'var-ame-l', productId: 'prod-americano', name: 'Large', priceCents: 17500, costPriceCents: 4200, isActive: true }
+    ],
+    recipes: {
+      'var-ame-s': [
+        { id: 'rec-ame-s-1', inventoryItemId: 'inv-beans-house', itemName: 'House Espresso Blend Beans', unit: 'grams', quantityRequired: 18 },
+        { id: 'rec-ame-s-2', inventoryItemId: 'inv-cups-16oz', itemName: '16oz Biodegradable Cups', unit: 'pcs', quantityRequired: 1 }
+      ],
+      'var-ame-l': [
+        { id: 'rec-ame-l-1', inventoryItemId: 'inv-beans-house', itemName: 'House Espresso Blend Beans', unit: 'grams', quantityRequired: 24 },
+        { id: 'rec-ame-l-2', inventoryItemId: 'inv-cups-16oz', itemName: '16oz Biodegradable Cups', unit: 'pcs', quantityRequired: 1 }
+      ]
+    }
+  },
+  {
+    id: 'prod-v60',
+    categoryId: 'cat-1',
+    sku: 'COF-V60',
+    name: 'V60 Pour Over',
+    description: 'High condition coffee with delicate citrus and floral finish.',
+    imageUrl: '/src/assets/images/v60_pourover_drink_1791171628952.jpg',
+    isActive: true,
+    displayOrder: 4,
+    modifierGroupIds: [],
+    variants: [
+      { id: 'var-v60-s', productId: 'prod-v60', name: 'Small', priceCents: 18000, costPriceCents: 6000, isActive: true },
+      { id: 'var-v60-l', productId: 'prod-v60', name: 'Large', priceCents: 21000, costPriceCents: 7500, isActive: true }
+    ],
+    recipes: {
+      'var-v60-s': [
+        { id: 'rec-v60-s-1', inventoryItemId: 'inv-beans-house', itemName: 'House Espresso Blend Beans', unit: 'grams', quantityRequired: 15 },
+        { id: 'rec-v60-s-2', inventoryItemId: 'inv-cups-16oz', itemName: '16oz Biodegradable Cups', unit: 'pcs', quantityRequired: 1 }
+      ],
+      'var-v60-l': [
+        { id: 'rec-v60-l-1', inventoryItemId: 'inv-beans-house', itemName: 'House Espresso Blend Beans', unit: 'grams', quantityRequired: 20 },
+        { id: 'rec-v60-l-2', inventoryItemId: 'inv-cups-16oz', itemName: '16oz Biodegradable Cups', unit: 'pcs', quantityRequired: 1 }
+      ]
+    }
+  }
+];
 const initialSuppliers: Supplier[] = [];
 
 const initialExpenseCategories: ExpenseCategory[] = [
@@ -147,15 +256,20 @@ const initialSettings: ShopSettings = {
   lastBackupAt: undefined
 };
 
+type ProductSyncListener = (product: Product, action: 'save' | 'delete') => void;
+let productSyncListener: ProductSyncListener | null = null;
+
+export function setProductSyncListener(listener: ProductSyncListener): void {
+  productSyncListener = listener;
+}
+
 export class LocalStorageDB {
   private state: DatabaseState;
 
   constructor() {
-    // Purge any past demo databases to ensure a completely clean start
+    // Clear any previous demo state so the user starts with a completely clean database
     try {
       localStorage.removeItem('c5isr_pos_offline_db_v1');
-      localStorage.removeItem('c5isr_pos_offline_db_v2');
-      localStorage.removeItem('c5isr_pos_offline_db_v2_clean');
     } catch {}
     this.state = this.loadState();
   }
@@ -166,6 +280,13 @@ export class LocalStorageDB {
       if (raw) {
         const parsed = JSON.parse(raw);
         if (parsed && parsed.version === DB_VERSION) {
+          if (!parsed.products || parsed.products.length === 0) {
+            parsed.products = initialProducts;
+            parsed.categories = initialCategories;
+            if (!parsed.inventoryItems || parsed.inventoryItems.length === 0) {
+              parsed.inventoryItems = initialInventory;
+            }
+          }
           return parsed;
         }
       }
@@ -613,6 +734,13 @@ export class LocalStorageDB {
       this.logAudit(currentUser.id, currentUser.fullName, 'PRODUCT_CREATE', `Created product ${product.name}`);
     }
     this.persist(this.state);
+    if (productSyncListener) {
+      try {
+        productSyncListener(product, 'save');
+      } catch (err) {
+        console.warn('Sync listener error:', err);
+      }
+    }
   }
 
   public deleteProduct(productId: string): void {
@@ -623,6 +751,13 @@ export class LocalStorageDB {
       const currentUser = this.getCurrentUser();
       this.logAudit(currentUser.id, currentUser.fullName, 'PRODUCT_DELETE', `Deleted product ${name}`);
       this.persist(this.state);
+      if (productSyncListener) {
+        try {
+          productSyncListener({ id: productId } as Product, 'delete');
+        } catch (err) {
+          console.warn('Sync listener error:', err);
+        }
+      }
     }
   }
 
@@ -780,245 +915,6 @@ export class LocalStorageDB {
     } catch (e) {
       return { success: false, message: 'JSON parsing error: ' + (e as Error).message };
     }
-  }
-
-  public generateSQLiteDump(): string {
-    const s = this.state;
-    const lines: string[] = [
-      '-- ==============================================================================',
-      '-- C5ISR COFFEE SHOP POS — PRODUCTION SQLITE 3 OFFLINE DATABASE DUMP',
-      `-- Exported At: ${new Date().toISOString()}`,
-      `-- Database Version: ${DB_VERSION}`,
-      '-- ==============================================================================',
-      'PRAGMA foreign_keys = OFF;',
-      'BEGIN TRANSACTION;',
-      '',
-      '-- 1. USERS',
-      'CREATE TABLE IF NOT EXISTS users (',
-      '    id TEXT PRIMARY KEY,',
-      '    username TEXT UNIQUE NOT NULL,',
-      '    pin_hash TEXT NOT NULL,',
-      '    full_name TEXT NOT NULL,',
-      '    role TEXT CHECK(role IN (\'admin\', \'manager\', \'cashier\')) NOT NULL,',
-      '    status TEXT CHECK(status IN (\'active\', \'inactive\')) DEFAULT \'active\',',
-      '    created_at DATETIME DEFAULT CURRENT_TIMESTAMP',
-      ');',
-      ...s.users.map(u => 
-        `INSERT OR REPLACE INTO users (id, username, pin_hash, full_name, role, status, created_at) VALUES ('${u.id}', '${u.username.replace(/'/g, "''")}', '${u.pinHash}', '${u.fullName.replace(/'/g, "''")}', '${u.role}', '${u.status}', '${u.createdAt}');`
-      ),
-      '',
-      '-- 2. CATEGORIES',
-      'CREATE TABLE IF NOT EXISTS categories (',
-      '    id TEXT PRIMARY KEY,',
-      '    name TEXT NOT NULL,',
-      '    display_order INTEGER DEFAULT 0,',
-      '    color_code TEXT',
-      ');',
-      ...s.categories.map(c =>
-        `INSERT OR REPLACE INTO categories (id, name, display_order, color_code) VALUES ('${c.id}', '${c.name.replace(/'/g, "''")}', ${c.displayOrder}, '${c.colorCode || ''}');`
-      ),
-      '',
-      '-- 3. PRODUCTS & VARIANTS',
-      'CREATE TABLE IF NOT EXISTS products (',
-      '    id TEXT PRIMARY KEY,',
-      '    category_id TEXT NOT NULL,',
-      '    sku TEXT,',
-      '    name TEXT NOT NULL,',
-      '    description TEXT,',
-      '    is_active INTEGER DEFAULT 1,',
-      '    display_order INTEGER DEFAULT 0',
-      ');',
-      'CREATE TABLE IF NOT EXISTS product_variants (',
-      '    id TEXT PRIMARY KEY,',
-      '    product_id TEXT NOT NULL,',
-      '    name TEXT NOT NULL,',
-      '    price_cents INTEGER NOT NULL,',
-      '    cost_price_cents INTEGER DEFAULT 0,',
-      '    is_active INTEGER DEFAULT 1',
-      ');',
-      ...s.products.map(p =>
-        `INSERT OR REPLACE INTO products (id, category_id, sku, name, description, is_active, display_order) VALUES ('${p.id}', '${p.categoryId}', '${(p.sku || '').replace(/'/g, "''")}', '${p.name.replace(/'/g, "''")}', '${(p.description || '').replace(/'/g, "''")}', ${p.isActive ? 1 : 0}, ${p.displayOrder});`
-      ),
-      ...s.products.flatMap(p => p.variants.map(v =>
-        `INSERT OR REPLACE INTO product_variants (id, product_id, name, price_cents, cost_price_cents, is_active) VALUES ('${v.id}', '${p.id}', '${v.name.replace(/'/g, "''")}', ${v.priceCents}, ${v.costPriceCents || 0}, ${v.isActive ? 1 : 0});`
-      )),
-      '',
-      '-- 4. INVENTORY ITEMS',
-      'CREATE TABLE IF NOT EXISTS inventory_items (',
-      '    id TEXT PRIMARY KEY,',
-      '    sku TEXT,',
-      '    name TEXT NOT NULL,',
-      '    current_stock REAL NOT NULL,',
-      '    min_threshold REAL NOT NULL,',
-      '    unit TEXT NOT NULL,',
-      '    cost_per_unit_cents INTEGER NOT NULL',
-      ');',
-      ...s.inventoryItems.map(i =>
-        `INSERT OR REPLACE INTO inventory_items (id, sku, name, current_stock, min_threshold, unit, cost_per_unit_cents) VALUES ('${i.id}', '${(i.sku || '').replace(/'/g, "''")}', '${i.name.replace(/'/g, "''")}', ${i.currentStock}, ${i.minThreshold}, '${i.unit}', ${i.costPerUnitCents});`
-      ),
-      '',
-      '-- 5. CASHIER SHIFTS & MOVEMENTS',
-      'CREATE TABLE IF NOT EXISTS cashier_shifts (',
-      '    id TEXT PRIMARY KEY,',
-      '    user_id TEXT NOT NULL,',
-      '    user_name TEXT NOT NULL,',
-      '    opening_cash_cents INTEGER NOT NULL,',
-      '    closing_cash_cents INTEGER,',
-      '    expected_cash_cents INTEGER,',
-      '    actual_cash_cents INTEGER,',
-      '    cash_variance_cents INTEGER,',
-      '    status TEXT NOT NULL,',
-      '    opened_at DATETIME NOT NULL,',
-      '    closed_at DATETIME',
-      ');',
-      ...s.shifts.map(sh =>
-        `INSERT OR REPLACE INTO cashier_shifts (id, user_id, user_name, opening_cash_cents, closing_cash_cents, expected_cash_cents, actual_cash_cents, cash_variance_cents, status, opened_at, closed_at) VALUES ('${sh.id}', '${sh.userId}', '${sh.userName.replace(/'/g, "''")}', ${sh.openingCashCents}, ${sh.closingCashCents || 'NULL'}, ${sh.expectedCashCents || 'NULL'}, ${sh.actualCashCents || 'NULL'}, ${sh.cashVarianceCents || 'NULL'}, '${sh.status}', '${sh.openedAt}', ${sh.closedAt ? `'${sh.closedAt}'` : 'NULL'});`
-      ),
-      '',
-      '-- 6. SALES TICKETS',
-      'CREATE TABLE IF NOT EXISTS sales (',
-      '    id TEXT PRIMARY KEY,',
-      '    order_number TEXT UNIQUE NOT NULL,',
-      '    customer_name TEXT,',
-      '    order_type TEXT NOT NULL,',
-      '    subtotal_cents INTEGER NOT NULL,',
-      '    discount_cents INTEGER NOT NULL,',
-      '    total_cents INTEGER NOT NULL,',
-      '    payment_method TEXT NOT NULL,',
-      '    payment_status TEXT NOT NULL,',
-      '    created_at DATETIME NOT NULL',
-      ');',
-      ...s.sales.map(sl =>
-        `INSERT OR REPLACE INTO sales (id, order_number, customer_name, order_type, subtotal_cents, discount_cents, total_cents, payment_method, payment_status, created_at) VALUES ('${sl.id}', '${sl.orderNumber}', '${(sl.customerName || '').replace(/'/g, "''")}', '${sl.orderType}', ${sl.subtotalCents}, ${sl.discountCents}, ${sl.totalCents}, '${sl.payment.method}', '${sl.paymentStatus}', '${sl.createdAt}');`
-      ),
-      '',
-      '-- 7. EXPENSES',
-      'CREATE TABLE IF NOT EXISTS expenses (',
-      '    id TEXT PRIMARY KEY,',
-      '    category_name TEXT NOT NULL,',
-      '    payee TEXT NOT NULL,',
-      '    amount_cents INTEGER NOT NULL,',
-      '    description TEXT,',
-      '    spent_at DATETIME NOT NULL',
-      ');',
-      ...s.expenses.map(e =>
-        `INSERT OR REPLACE INTO expenses (id, category_name, payee, amount_cents, description, spent_at) VALUES ('${e.id}', '${e.categoryName.replace(/'/g, "''")}', '${e.payee.replace(/'/g, "''")}', ${e.amountCents}, '${(e.description || '').replace(/'/g, "''")}', '${e.spentAt}');`
-      ),
-      '',
-      '-- 8. AUDIT LOGS',
-      'CREATE TABLE IF NOT EXISTS audit_logs (',
-      '    id TEXT PRIMARY KEY,',
-      '    user_name TEXT NOT NULL,',
-      '    action TEXT NOT NULL,',
-      '    details TEXT NOT NULL,',
-      '    terminal TEXT NOT NULL,',
-      '    created_at DATETIME NOT NULL',
-      ');',
-      ...s.auditLogs.map(a =>
-        `INSERT OR REPLACE INTO audit_logs (id, user_name, action, details, terminal, created_at) VALUES ('${a.id}', '${a.userName.replace(/'/g, "''")}', '${a.action}', '${a.details.replace(/'/g, "''")}', '${a.terminal}', '${a.createdAt}');`
-      ),
-      '',
-      'COMMIT;',
-      'PRAGMA foreign_keys = ON;'
-    ];
-    return lines.join('\n');
-  }
-
-  public loadSpecialtyCoffeeSampleMenu(): void {
-    const sampleProducts: Product[] = [
-      {
-        id: 'prod-sample-1',
-        categoryId: 'cat-2',
-        sku: 'DRK-SPAN',
-        name: 'Iced Spanish Latte',
-        description: 'Double espresso, sweetened condensed milk, and velvety chilled milk on ice.',
-        imageUrl: '/src/assets/images/product_spanish_latte_1791168309026.jpg',
-        isActive: true,
-        displayOrder: 1,
-        modifierGroupIds: ['modgrp-1', 'modgrp-2', 'modgrp-3'],
-        variants: [
-          { id: 'var-p1-1', productId: 'prod-sample-1', name: '12oz Hot', priceCents: 17000, costPriceCents: 4500, isActive: true },
-          { id: 'var-p1-2', productId: 'prod-sample-1', name: '16oz Iced', priceCents: 18500, costPriceCents: 5200, isActive: true }
-        ]
-      },
-      {
-        id: 'prod-sample-2',
-        categoryId: 'cat-3',
-        sku: 'DRK-DIRTY-MAT',
-        name: 'Dirty Uji Matcha Espresso',
-        description: 'Layered Japanese ceremonial green tea, oat milk, and a floating ristretto shot.',
-        imageUrl: '/src/assets/images/product_dirty_matcha_1791168321790.jpg',
-        isActive: true,
-        displayOrder: 2,
-        modifierGroupIds: ['modgrp-1', 'modgrp-2'],
-        variants: [
-          { id: 'var-p2-1', productId: 'prod-sample-2', name: '16oz Iced', priceCents: 21000, costPriceCents: 6800, isActive: true }
-        ]
-      },
-      {
-        id: 'prod-sample-3',
-        categoryId: 'cat-5',
-        sku: 'PAS-CROIS',
-        name: 'Artisan Butter Croissant',
-        description: 'Freshly baked artisanal 100% French butter croissant with flaky layers.',
-        imageUrl: '/src/assets/images/product_artisan_pastry_1791168332615.jpg',
-        isActive: true,
-        displayOrder: 3,
-        modifierGroupIds: [],
-        variants: [
-          { id: 'var-p3-1', productId: 'prod-sample-3', name: 'Standard Heated', priceCents: 13500, costPriceCents: 6500, isActive: true }
-        ]
-      }
-    ];
-
-    const sampleInventory: InventoryItem[] = [
-      {
-        id: 'inv-sample-1',
-        name: 'Single Origin Espresso Beans (Mt. Apo)',
-        sku: 'RAW-BEAN-APO',
-        currentStock: 4500,
-        minThreshold: 1000,
-        unit: 'grams',
-        costPerUnitCents: 90,
-        updatedAt: new Date().toISOString()
-      },
-      {
-        id: 'inv-sample-2',
-        name: 'Barista Oat Milk (Oatly Edition)',
-        sku: 'RAW-MILK-OAT',
-        currentStock: 12000,
-        minThreshold: 3000,
-        unit: 'ml',
-        costPerUnitCents: 18,
-        updatedAt: new Date().toISOString()
-      },
-      {
-        id: 'inv-sample-3',
-        name: 'Sweetened Condensed Milk',
-        sku: 'RAW-COND-MILK',
-        currentStock: 3500,
-        minThreshold: 800,
-        unit: 'ml',
-        costPerUnitCents: 14,
-        updatedAt: new Date().toISOString()
-      },
-      {
-        id: 'inv-sample-4',
-        name: 'Ceremonial Matcha Powder',
-        sku: 'RAW-MATCHA',
-        currentStock: 800,
-        minThreshold: 200,
-        unit: 'grams',
-        costPerUnitCents: 350,
-        updatedAt: new Date().toISOString()
-      }
-    ];
-
-    this.state.products = sampleProducts;
-    this.state.inventoryItems = sampleInventory;
-    const currentUser = this.getCurrentUser();
-    this.logAudit(currentUser.id, currentUser.fullName, 'MENU_PRESETS_LOADED', 'Loaded specialty coffee catalog sample presets.');
-    this.persist(this.state);
   }
 
   public resetToFactory(): void {

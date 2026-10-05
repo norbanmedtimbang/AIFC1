@@ -1,6 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import {
   Search,
+  SlidersHorizontal,
   Plus,
   Minus,
   Trash2,
@@ -8,13 +9,14 @@ import {
   CreditCard,
   Banknote,
   Smartphone,
-  Tag,
   AlertTriangle,
   RotateCcw,
   Sparkles,
   Coffee,
-  CheckCircle2,
-  ChevronRight
+  Bike,
+  UtensilsCrossed,
+  ShoppingBag,
+  Sliders
 } from 'lucide-react';
 import {
   Product,
@@ -22,12 +24,12 @@ import {
   Modifier,
   ModifierGroup,
   CartItem,
-  PaymentMethod,
   OrderType,
+  PaymentMethod,
   Sale,
   ShopSettings,
-  CashierShift,
-  User
+  User,
+  CashierShift
 } from '../../types';
 import { db, formatPHP } from '../../services/storage';
 import { ThermalReceiptModal } from '../shared/ThermalReceiptModal';
@@ -37,11 +39,175 @@ interface POSViewProps {
   categories: { id: string; name: string }[];
   modifierGroups: ModifierGroup[];
   settings: ShopSettings;
-  currentUser?: User;
+  currentUser: User;
   activeShift: CashierShift | null;
   onRefreshData: () => void;
   onOpenShiftModal: () => void;
 }
+
+// Dedicated Card matching the Purr'Coffee aesthetic
+interface ProductCardProps {
+  product: Product;
+  onAddToCart: (variant: ProductVariant, quantity: number) => void;
+  onOpenCustomizer: (product: Product, variant: ProductVariant) => void;
+}
+
+const ProductCard: React.FC<ProductCardProps> = ({
+  product,
+  onAddToCart,
+  onOpenCustomizer
+}) => {
+  const [selectedVariantId, setSelectedVariantId] = useState<string>(
+    product.variants[0]?.id || ''
+  );
+  const [quantity, setQuantity] = useState<number>(1);
+  const [justAdded, setJustAdded] = useState<boolean>(false);
+
+  const activeVariant = useMemo(() => {
+    return product.variants.find(v => v.id === selectedVariantId) || product.variants[0];
+  }, [product.variants, selectedVariantId]);
+
+  const handleAdd = () => {
+    if (!activeVariant) return;
+    onAddToCart(activeVariant, quantity);
+    setJustAdded(true);
+    setTimeout(() => setJustAdded(false), 900);
+  };
+
+  return (
+    <div className="bg-white rounded-[26px] p-4 border border-[#F5EBE1] shadow-[0_10px_30px_rgba(200,165,135,0.10)] hover:shadow-[0_14px_35px_rgba(200,165,135,0.16)] transition-all duration-200 flex flex-col justify-between group">
+      {/* Top Image Container */}
+      <div
+        onClick={() => onOpenCustomizer(product, activeVariant)}
+        className="w-full h-44 rounded-[20px] overflow-hidden bg-[#F5EBE1] relative cursor-pointer group-hover:opacity-95 transition"
+      >
+        {product.imageUrl ? (
+          <img
+            src={product.imageUrl}
+            alt={product.name}
+            referrerPolicy="no-referrer"
+            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+          />
+        ) : (
+          <div className="w-full h-full flex flex-col items-center justify-center text-[#C68A57]/60">
+            <Coffee className="w-10 h-10" />
+            <span className="text-[10px] font-semibold mt-1">Specialty Brew</span>
+          </div>
+        )}
+
+        {/* Quick Customizer badge */}
+        {product.modifierGroupIds.length > 0 && (
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              onOpenCustomizer(product, activeVariant);
+            }}
+            className="absolute top-2.5 right-2.5 px-2.5 py-1 rounded-full bg-white/90 backdrop-blur-xs text-[10px] font-bold text-[#C68A57] shadow-xs hover:bg-white transition flex items-center gap-1"
+          >
+            <Sliders className="w-2.5 h-2.5" />
+            <span>Customize</span>
+          </button>
+        )}
+      </div>
+
+      {/* Details */}
+      <div className="pt-3 pb-1 flex-1 flex flex-col justify-between">
+        <div>
+          {/* Title & Price in one bold line */}
+          <div className="flex items-start justify-between gap-2">
+            <h4
+              onClick={() => onOpenCustomizer(product, activeVariant)}
+              className="font-bold text-sm text-[#2B2521] leading-snug cursor-pointer hover:text-[#C68A57] transition line-clamp-1"
+            >
+              {product.name}
+            </h4>
+            <span className="font-extrabold text-sm text-[#2B2521] shrink-0 font-mono tabular-nums">
+              {formatPHP(activeVariant?.priceCents || 0)}
+            </span>
+          </div>
+
+          {/* Short Description */}
+          {product.description && (
+            <p className="text-[11px] text-[#8C7F76] mt-1 line-clamp-2 leading-relaxed">
+              {product.description}
+            </p>
+          )}
+        </div>
+
+        {/* Size Selector */}
+        {product.variants.length > 0 && (
+          <div className="mt-3">
+            <span className="block text-[11px] font-semibold text-[#5A4F47] mb-1.5">
+              Size
+            </span>
+            <div className="flex items-center gap-2 overflow-x-auto pb-1">
+              {product.variants.map(variant => {
+                const isSelected = variant.id === activeVariant?.id;
+                return (
+                  <button
+                    key={variant.id}
+                    type="button"
+                    onClick={() => setSelectedVariantId(variant.id)}
+                    className={`px-3 py-1 rounded-xl text-xs font-semibold transition whitespace-nowrap ${
+                      isSelected
+                        ? 'bg-[#FCEFE5] border border-[#DEBEA6] text-[#C68A57] font-bold shadow-2xs'
+                        : 'bg-white border border-[#EAE0D5] text-[#8C7F76] hover:border-[#C68A57]/60'
+                    }`}
+                  >
+                    {variant.name}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Bottom Action Row: Stepper + Add to Cart Button */}
+      <div className="pt-3 border-t border-[#F5EBE1] flex items-center justify-between gap-2 mt-2">
+        {/* Stepper Pill */}
+        <div className="flex items-center bg-[#F9F4EE] border border-[#EFE4D9] rounded-xl px-2 py-1 gap-2 text-xs font-bold text-[#5A4F47]">
+          <button
+            type="button"
+            onClick={() => setQuantity(q => Math.max(1, q - 1))}
+            className="w-5 h-5 rounded-md hover:bg-white flex items-center justify-center transition active:scale-95"
+          >
+            <Minus className="w-3 h-3 text-[#7E726A]" />
+          </button>
+          <span className="w-4 text-center tabular-nums font-mono">{quantity}</span>
+          <button
+            type="button"
+            onClick={() => setQuantity(q => q + 1)}
+            className="w-5 h-5 rounded-md hover:bg-white flex items-center justify-center transition active:scale-95"
+          >
+            <Plus className="w-3 h-3 text-[#7E726A]" />
+          </button>
+        </div>
+
+        {/* Add to Cart Button */}
+        <button
+          type="button"
+          onClick={handleAdd}
+          className={`flex-1 py-2 px-3 rounded-xl text-xs font-semibold text-white transition-all shadow-xs flex items-center justify-center gap-1.5 ${
+            justAdded
+              ? 'bg-emerald-600 scale-[0.98]'
+              : 'bg-[#C68A57] hover:bg-[#AC7140] active:scale-95'
+          }`}
+        >
+          {justAdded ? (
+            <>
+              <Check className="w-3.5 h-3.5" />
+              <span>Added</span>
+            </>
+          ) : (
+            <span>Add to Cart</span>
+          )}
+        </button>
+      </div>
+    </div>
+  );
+};
 
 export const POSView: React.FC<POSViewProps> = ({
   products,
@@ -118,11 +284,25 @@ export const POSView: React.FC<POSViewProps> = ({
   const totalCents = Math.max(0, subtotalCents - discountDetails.cents);
 
   // Open Customizer for a product
-  const handleSelectProduct = (product: Product) => {
+  const handleOpenCustomizer = (product: Product, variant: ProductVariant) => {
     setCustomizingProduct(product);
-    setSelectedVariant(product.variants[0] || null);
+    setSelectedVariant(variant);
     setSelectedModifiers([]);
     setCustomizerNotes('');
+  };
+
+  // Add directly from card
+  const handleQuickAddToCart = (product: Product, variant: ProductVariant, quantity: number) => {
+    const newItem: CartItem = {
+      tempId: 'cart-' + Date.now() + '-' + Math.random().toString(36).substr(2, 4),
+      product,
+      variant,
+      selectedModifiers: [],
+      quantity,
+      unitPriceCents: variant.priceCents,
+      totalPriceCents: variant.priceCents * quantity
+    };
+    setCart(prev => [...prev, newItem]);
   };
 
   // Modifier toggle
@@ -141,7 +321,7 @@ export const POSView: React.FC<POSViewProps> = ({
   };
 
   // Add customized product to Cart
-  const handleAddToCart = () => {
+  const handleAddCustomizedToCart = () => {
     if (!customizingProduct || !selectedVariant) return;
 
     const modifiersCost = selectedModifiers.reduce((sum, m) => sum + m.priceCents, 0);
@@ -182,21 +362,23 @@ export const POSView: React.FC<POSViewProps> = ({
     );
   };
 
-  const handleRemoveFromCart = (tempId: string) => {
-    setCart(prev => prev.filter(item => item.tempId !== tempId));
-  };
-
   const handleClearCart = () => {
-    if (cart.length > 0 && window.confirm('Clear all items from current ticket?')) {
+    if (cart.length > 0 && window.confirm('Clear all items from current cart ticket?')) {
       setCart([]);
       setCustomerName('');
       setDiscountType('none');
     }
   };
 
-  // Checkout Actions
+  // Open Checkout
   const handleOpenCheckout = () => {
     if (cart.length === 0) return;
+    if (!activeShift) {
+      alert('Please open a cashier shift with opening cash float before ringing up sales.');
+      onOpenShiftModal();
+      return;
+    }
+    setPaymentMethod('cash');
     setCashTenderedInput((totalCents / 100).toString());
     setReferenceNumber('');
     setIsConfirmedOnlineRef(false);
@@ -204,26 +386,30 @@ export const POSView: React.FC<POSViewProps> = ({
     setIsCheckoutOpen(true);
   };
 
-  const tenderedAmount = parseFloat(cashTenderedInput) || 0;
-  const tenderedCents = Math.round(tenderedAmount * 100);
+  // Cash Calculation
+  const tenderedCents = useMemo(() => {
+    const parsed = parseFloat(cashTenderedInput);
+    return isNaN(parsed) ? 0 : Math.round(parsed * 100);
+  }, [cashTenderedInput]);
+
   const changeCents = Math.max(0, tenderedCents - totalCents);
 
+  // Commit Checkout Transaction
   const handleCompleteSale = () => {
     setCheckoutError(null);
 
-    // Validation
     if (paymentMethod === 'cash') {
       if (tenderedCents < totalCents) {
-        setCheckoutError(`Tendered cash (₱${tenderedAmount.toFixed(2)}) is less than total amount due (${formatPHP(totalCents)})`);
+        setCheckoutError(`Tendered cash (${formatPHP(tenderedCents)}) is less than total due (${formatPHP(totalCents)}).`);
         return;
       }
     } else {
       if (!referenceNumber.trim()) {
-        setCheckoutError(`Please enter customer ${paymentMethod.toUpperCase()} reference / approval code`);
+        setCheckoutError(`Please record the ${paymentMethod.toUpperCase()} confirmation reference number.`);
         return;
       }
       if (!isConfirmedOnlineRef) {
-        setCheckoutError(`Please verify customer transaction screenshot or receipt on mobile`);
+        setCheckoutError(`Cashier must visually confirm customer's payment screen.`);
         return;
       }
     }
@@ -252,185 +438,111 @@ export const POSView: React.FC<POSViewProps> = ({
     }
   };
 
-  // Load Preset Coffee Items (with Generated Photography)
-  const handleLoadSpecialtyPresets = () => {
-    db.loadSpecialtyCoffeeSampleMenu();
-    onRefreshData();
-  };
-
   return (
-    <div className="flex h-[calc(100vh-4rem)] overflow-hidden bg-[#FAF7F2]">
-      {/* LEFT SECTION: PRODUCT CATALOG & FILTERING */}
-      <div className="flex-1 flex flex-col overflow-hidden p-5 border-r border-stone-200">
-        {/* Search & Category Filter */}
-        <div className="flex items-center gap-3 mb-3">
+    <div className="flex h-full overflow-hidden p-4 gap-4">
+      {/* CENTER SECTION: MENU CATALOG */}
+      <div className="flex-1 flex flex-col overflow-hidden space-y-4">
+        {/* Top Search Bar & Filter Button (Matching Inspiration) */}
+        <div className="flex items-center gap-3">
           <div className="relative flex-1">
-            <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-stone-500" />
+            <Search className="w-4 h-4 absolute left-4 top-1/2 -translate-y-1/2 text-[#A59B93]" />
             <input
               type="text"
-              placeholder="Search drinks, SKU, pastries..."
+              placeholder="Search..."
               value={searchQuery}
               onChange={e => setSearchQuery(e.target.value)}
-              className="w-full bg-white pl-10 pr-4 py-2.5 rounded-2xl border border-stone-200 text-xs text-stone-900 font-medium placeholder:text-stone-400 outline-hidden focus:border-stone-900 shadow-2xs transition"
+              className="w-full bg-white pl-11 pr-4 py-2.5 rounded-full border border-[#EFE4D9] text-xs text-[#2B2521] placeholder:text-[#A59B93] outline-hidden focus:border-[#C68A57] shadow-xs transition"
             />
+            {searchQuery && (
+              <button
+                onClick={() => setSearchQuery('')}
+                className="absolute right-3.5 top-1/2 -translate-y-1/2 text-xs font-semibold text-[#8C7F76] hover:text-[#2B2521]"
+              >
+                Clear
+              </button>
+            )}
           </div>
-          {searchQuery && (
-            <button
-              onClick={() => setSearchQuery('')}
-              className="px-3.5 py-2 text-xs font-bold text-stone-800 bg-white rounded-2xl border border-stone-200 hover:bg-stone-100 cursor-pointer"
-            >
-              Clear
-            </button>
-          )}
-        </div>
 
-        {/* Clean Segmented Category Tabs */}
-        <div className="flex items-center gap-2 overflow-x-auto pb-2 scrollbar-none mb-3">
           <button
             onClick={() => setSelectedCategory('all')}
-            className={`px-4 py-2 rounded-xl text-xs font-black whitespace-nowrap transition cursor-pointer ${
-              selectedCategory === 'all'
-                ? 'bg-[#14100E] text-[#B4EE10] shadow-md'
-                : 'bg-white text-stone-700 hover:bg-stone-100 border border-stone-200'
-            }`}
+            className="px-5 py-2.5 rounded-full bg-[#C68A57] hover:bg-[#AC7140] text-white text-xs font-bold transition shadow-xs flex items-center gap-2 shrink-0 active:scale-95"
           >
-            All Items
+            <SlidersHorizontal className="w-3.5 h-3.5" />
+            <span>Filter</span>
           </button>
-          {categories.map(cat => {
-            const count = products.filter(p => p.categoryId === cat.id && p.isActive).length;
-            return (
-              <button
-                key={cat.id}
-                onClick={() => setSelectedCategory(cat.id)}
-                className={`px-4 py-2 rounded-xl text-xs font-black whitespace-nowrap transition flex items-center gap-1.5 cursor-pointer ${
-                  selectedCategory === cat.id
-                    ? 'bg-[#14100E] text-[#B4EE10] shadow-md'
-                    : 'bg-white text-stone-700 hover:bg-stone-100 border border-stone-200'
-                }`}
-              >
-                <span>{cat.name}</span>
-                {count > 0 && (
-                  <span className="text-[10px] font-mono opacity-80">({count})</span>
-                )}
-              </button>
-            );
-          })}
         </div>
 
-        {/* Product Cards Grid */}
-        <div className="flex-1 overflow-y-auto pr-1">
-          {products.length === 0 ? (
-            /* Clean Empty State with Gen Z Fast Action */
-            <div className="h-full flex flex-col items-center justify-center p-8 text-center max-w-md mx-auto">
-              <div className="w-16 h-16 rounded-3xl bg-white border border-stone-200 flex items-center justify-center text-[#14100E] mb-4 shadow-sm">
-                <Coffee className="w-8 h-8 stroke-[1.5]" />
-              </div>
-              <h3 className="font-display font-black text-xl text-stone-900 uppercase tracking-tight">
-                Menu is Currently Clean
-              </h3>
-              <p className="text-xs text-stone-600 mt-2 leading-relaxed">
-                You are running on a clean slate. You can add your custom drinks and coffee beans in Menu Management, or load specialty sample presets anytime.
-              </p>
-              <div className="mt-6 flex flex-col sm:flex-row gap-2.5 w-full">
+        {/* Section Heading & Category Filter Pills */}
+        <div className="space-y-3">
+          <h2 className="text-2xl font-black text-[#2B2521] tracking-tight">
+            Coffee menu
+          </h2>
+
+          {/* Horizontal Category Pill Bar */}
+          <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-none">
+            <button
+              onClick={() => setSelectedCategory('all')}
+              className={`px-5 py-2 rounded-full text-xs font-bold whitespace-nowrap transition-all shadow-xs ${
+                selectedCategory === 'all'
+                  ? 'bg-[#C68A57] text-white shadow-xs'
+                  : 'bg-white text-[#7D726A] border border-[#EFE4D9] hover:bg-[#FCEFE5] hover:text-[#C68A57]'
+              }`}
+            >
+              All
+            </button>
+            {categories.map(cat => {
+              const isActive = selectedCategory === cat.id;
+              return (
                 <button
-                  onClick={handleLoadSpecialtyPresets}
-                  className="flex-1 px-5 py-3 rounded-2xl bg-[#14100E] hover:bg-stone-900 text-[#B4EE10] text-xs font-black uppercase tracking-wider transition shadow-md flex items-center justify-center gap-2 cursor-pointer"
+                  key={cat.id}
+                  onClick={() => setSelectedCategory(cat.id)}
+                  className={`px-5 py-2 rounded-full text-xs font-bold whitespace-nowrap transition-all shadow-xs ${
+                    isActive
+                      ? 'bg-[#C68A57] text-white shadow-xs'
+                      : 'bg-white text-[#7D726A] border border-[#EFE4D9] hover:bg-[#FCEFE5] hover:text-[#C68A57]'
+                  }`}
                 >
-                  <Sparkles className="w-4 h-4 text-[#B4EE10]" />
-                  <span>Load Sample Coffee Menu</span>
+                  {cat.name}
                 </button>
-              </div>
-            </div>
-          ) : filteredProducts.length === 0 ? (
-            <div className="h-64 flex flex-col items-center justify-center text-center text-stone-500">
-              <Search className="w-8 h-8 text-stone-300 mb-2" />
-              <p className="text-sm font-bold text-stone-800">No items match your search filter</p>
-              <p className="text-xs text-stone-500 mt-0.5">Try searching another drink name or code</p>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Product Grid Area */}
+        <div className="flex-1 overflow-y-auto pr-1">
+          {filteredProducts.length === 0 ? (
+            <div className="h-64 flex flex-col items-center justify-center text-center text-[#8C7F76]">
+              <Coffee className="w-10 h-10 text-[#DECFC2] mb-2" />
+              <p className="text-sm font-bold text-[#2B2521]">No items found</p>
+              <p className="text-xs text-[#8C7F76] mt-0.5">Try searching another drink or keyword</p>
             </div>
           ) : (
-            <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3.5">
-              {filteredProducts.map(product => {
-                const lowestPrice = Math.min(...product.variants.map(v => v.priceCents));
-                const highestPrice = Math.max(...product.variants.map(v => v.priceCents));
-                const priceDisplay =
-                  lowestPrice === highestPrice
-                    ? formatPHP(lowestPrice)
-                    : `${formatPHP(lowestPrice)} - ${formatPHP(highestPrice)}`;
-
-                return (
-                  <button
-                    key={product.id}
-                    onClick={() => handleSelectProduct(product)}
-                    className="group bg-white rounded-3xl overflow-hidden text-left border border-stone-200 hover:border-stone-900 hover:shadow-lg transition-all active:scale-[0.98] flex flex-col justify-between cursor-pointer"
-                  >
-                    {/* Visual Asset if present */}
-                    {product.imageUrl && (
-                      <div className="w-full aspect-[4/3] bg-stone-100 overflow-hidden relative">
-                        <img
-                          src={product.imageUrl}
-                          alt={product.name}
-                          referrerPolicy="no-referrer"
-                          className="w-full h-full object-cover group-hover:scale-105 transition duration-300"
-                        />
-                      </div>
-                    )}
-
-                    <div className="p-4 flex-1 flex flex-col justify-between">
-                      <div>
-                        {/* Unboxed Metadata Line */}
-                        <div className="text-[10px] font-mono text-stone-500 font-bold uppercase mb-1">
-                          <span>{product.sku || 'ITEM'}</span>
-                          {product.variants.length > 1 && (
-                            <>
-                              <span aria-hidden="true" className="mx-1">·</span>
-                              <span>{product.variants.length} Sizes</span>
-                            </>
-                          )}
-                        </div>
-                        <h4 className="font-display font-black text-sm text-stone-900 leading-snug group-hover:text-amber-900 transition line-clamp-2">
-                          {product.name}
-                        </h4>
-                        {product.description && (
-                          <p className="text-[11px] text-stone-600 mt-1 line-clamp-2 leading-relaxed">
-                            {product.description}
-                          </p>
-                        )}
-                      </div>
-
-                      <div className="mt-3 pt-2.5 border-t border-stone-100 flex items-center justify-between">
-                        <span className="text-xs font-black font-mono tabular-nums text-stone-900">
-                          {priceDisplay}
-                        </span>
-                        <div className="w-7 h-7 rounded-xl bg-stone-100 group-hover:bg-[#14100E] group-hover:text-[#B4EE10] text-stone-800 flex items-center justify-center transition">
-                          <Plus className="w-4 h-4" />
-                        </div>
-                      </div>
-                    </div>
-                  </button>
-                );
-              })}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 pb-6">
+              {filteredProducts.map(product => (
+                <ProductCard
+                  key={product.id}
+                  product={product}
+                  onAddToCart={(variant, qty) => handleQuickAddToCart(product, variant, qty)}
+                  onOpenCustomizer={(p, v) => handleOpenCustomizer(p, v)}
+                />
+              ))}
             </div>
           )}
         </div>
       </div>
 
-      {/* RIGHT SECTION: CURRENT ORDER TICKET */}
-      <div className="w-96 bg-white flex flex-col justify-between border-l border-stone-200 shrink-0 shadow-lg">
-        {/* Ticket Header */}
-        <div className="p-4 border-b border-stone-200 space-y-3">
+      {/* RIGHT SECTION: CART SUMMARY (Matching Purr'Coffee Layout) */}
+      <div className="w-88 bg-white rounded-[28px] p-5 border border-[#F5EBE1] shadow-[0_10px_30px_rgba(200,165,135,0.12)] flex flex-col justify-between shrink-0 select-none">
+        <div className="space-y-4">
           <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <span className="font-display font-black text-sm uppercase text-stone-900">
-                Order Ticket
-              </span>
-              <span className="px-2 py-0.5 rounded-full bg-stone-100 text-stone-700 text-[10px] font-mono font-bold">
-                {cart.length} items
-              </span>
-            </div>
+            <h3 className="text-lg font-black text-[#2B2521] tracking-tight">
+              Cart summary
+            </h3>
             {cart.length > 0 && (
               <button
                 onClick={handleClearCart}
-                className="text-[11px] text-rose-600 hover:text-rose-800 font-bold flex items-center gap-1 transition cursor-pointer"
+                className="text-[11px] font-semibold text-rose-600 hover:text-rose-800 flex items-center gap-1 transition"
               >
                 <Trash2 className="w-3.5 h-3.5" />
                 <span>Clear</span>
@@ -438,21 +550,30 @@ export const POSView: React.FC<POSViewProps> = ({
             )}
           </div>
 
-          {/* Dine In / Take Out Segmented Toggle */}
-          <div className="grid grid-cols-3 gap-1 bg-stone-100 p-1 rounded-2xl border border-stone-200">
-            {(['dine_in', 'take_out', 'delivery_pickup'] as OrderType[]).map(type => (
-              <button
-                key={type}
-                onClick={() => setOrderType(type)}
-                className={`py-1.5 rounded-xl text-xs font-bold transition capitalize cursor-pointer ${
-                  orderType === type
-                    ? 'bg-[#14100E] text-white shadow-xs font-black'
-                    : 'text-stone-700 hover:text-black'
-                }`}
-              >
-                {type === 'dine_in' ? 'Dine In' : type === 'take_out' ? 'Take Out' : 'Delivery'}
-              </button>
-            ))}
+          {/* 3 Order Type Selector Tiles: Delivery, Dine in, Take away */}
+          <div className="grid grid-cols-3 gap-2">
+            {[
+              { id: 'delivery_pickup', label: 'Delivery', icon: Bike },
+              { id: 'dine_in', label: 'Dine in', icon: UtensilsCrossed },
+              { id: 'take_out', label: 'Take away', icon: ShoppingBag }
+            ].map(tab => {
+              const Icon = tab.icon;
+              const isSelected = orderType === tab.id;
+              return (
+                <button
+                  key={tab.id}
+                  onClick={() => setOrderType(tab.id as OrderType)}
+                  className={`p-3 rounded-2xl flex flex-col items-center justify-center gap-1.5 transition-all text-xs ${
+                    isSelected
+                      ? 'bg-[#FCEFE5] border border-[#DEBEA6] text-[#C68A57] font-bold shadow-xs'
+                      : 'bg-[#F9F4EE] border border-transparent text-[#7D726A] hover:bg-[#F3E9DF]'
+                  }`}
+                >
+                  <Icon className="w-4 h-4" />
+                  <span className="text-[11px]">{tab.label}</span>
+                </button>
+              );
+            })}
           </div>
 
           {/* Customer Name Field */}
@@ -461,187 +582,157 @@ export const POSView: React.FC<POSViewProps> = ({
             placeholder="Customer name (Optional)"
             value={customerName}
             onChange={e => setCustomerName(e.target.value)}
-            className="w-full bg-stone-50 px-3.5 py-2 rounded-xl border border-stone-200 text-xs text-stone-900 placeholder:text-stone-400 outline-hidden focus:border-stone-900"
+            className="w-full bg-[#FBF6F0] px-3.5 py-2 rounded-xl border border-[#EFE4D9] text-xs text-[#2B2521] placeholder:text-[#A59B93] outline-hidden focus:border-[#C68A57]"
           />
-        </div>
 
-        {/* Cart Items List */}
-        <div className="flex-1 overflow-y-auto p-4 divide-y divide-stone-100">
-          {cart.length === 0 ? (
-            <div className="h-full flex flex-col items-center justify-center text-center text-stone-500">
-              <div className="w-12 h-12 rounded-2xl bg-stone-100 flex items-center justify-center text-stone-400 mb-2">
-                <Tag className="w-5 h-5 stroke-[1.5]" />
+          {/* Cart Item Rows */}
+          <div className="space-y-3 max-h-[38vh] overflow-y-auto pr-1">
+            {cart.length === 0 ? (
+              <div className="py-12 text-center text-[#A59B93] space-y-1">
+                <Coffee className="w-8 h-8 mx-auto text-[#DECFC2]" />
+                <p className="text-xs font-semibold">Your ticket is empty</p>
+                <p className="text-[11px]">Choose a coffee to start ringing orders</p>
               </div>
-              <p className="text-xs font-bold text-stone-800">Ticket is empty</p>
-              <p className="text-[11px] text-stone-500 mt-0.5">
-                Select coffee or food from the catalog on the left
-              </p>
-            </div>
-          ) : (
-            cart.map(item => (
-              <div key={item.tempId} className="py-3 first:pt-0 last:pb-0">
-                <div className="flex items-start justify-between gap-2">
-                  <div className="flex-1">
-                    <h5 className="font-bold text-xs text-stone-900 leading-snug">
-                      {item.product.name}
-                    </h5>
-                    <p className="text-[11px] text-stone-600 font-semibold mt-0.5">
-                      {item.variant.name}
-                    </p>
-                    {item.selectedModifiers.length > 0 && (
-                      <div className="text-[10px] text-stone-600 mt-1 space-y-0.5 pl-2 border-l-2 border-[#B4EE10]">
-                        {item.selectedModifiers.map(m => (
-                          <div key={m.id} className="flex justify-between">
-                            <span>+ {m.name}</span>
-                            {m.priceCents > 0 && (
-                              <span className="font-mono tabular-nums">{formatPHP(m.priceCents)}</span>
-                            )}
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                    {item.notes && (
-                      <p className="text-[10px] italic text-amber-900 bg-amber-50 px-2 py-0.5 rounded mt-1">
-                        Note: {item.notes}
+            ) : (
+              cart.map(item => (
+                <div
+                  key={item.tempId}
+                  className="flex items-center justify-between gap-3 p-2 rounded-2xl hover:bg-[#FBF6F0] transition"
+                >
+                  <div className="flex items-center gap-2.5 overflow-hidden">
+                    {/* Thumbnail */}
+                    <div className="w-12 h-12 rounded-xl bg-[#F5EBE1] overflow-hidden shrink-0">
+                      {item.product.imageUrl ? (
+                        <img
+                          src={item.product.imageUrl}
+                          alt={item.product.name}
+                          referrerPolicy="no-referrer"
+                          className="w-full h-full object-cover"
+                        />
+                      ) : (
+                        <div className="w-full h-full flex items-center justify-center text-[#C68A57]">
+                          <Coffee className="w-5 h-5" />
+                        </div>
+                      )}
+                    </div>
+                    <div className="overflow-hidden">
+                      <p className="text-xs font-bold text-[#2B2521] truncate">
+                        {item.product.name}
                       </p>
-                    )}
+                      <p className="text-[10px] text-[#8C7F76] truncate">
+                        {item.variant.name}
+                        {item.selectedModifiers.length > 0 &&
+                          ` + ${item.selectedModifiers.map(m => m.name).join(', ')}`}
+                      </p>
+                      <p className="text-xs font-extrabold text-[#2B2521] font-mono tabular-nums mt-0.5">
+                        {formatPHP(item.totalPriceCents)}
+                      </p>
+                    </div>
                   </div>
-                  <span className="font-black text-xs font-mono tabular-nums text-stone-900 shrink-0">
-                    {formatPHP(item.totalPriceCents)}
-                  </span>
-                </div>
 
-                {/* Quantity Controls */}
-                <div className="flex items-center justify-between mt-2.5">
-                  <button
-                    onClick={() => handleRemoveFromCart(item.tempId)}
-                    className="p-1 text-stone-400 hover:text-rose-600 rounded transition cursor-pointer"
-                  >
-                    <Trash2 className="w-3.5 h-3.5" />
-                  </button>
-                  <div className="flex items-center gap-2 bg-stone-100 rounded-xl p-1 border border-stone-200">
+                  {/* Inline Stepper Pill */}
+                  <div className="flex items-center bg-[#F9F4EE] border border-[#EFE4D9] rounded-full px-2 py-0.5 gap-2 text-xs font-bold text-[#5A4F47] shrink-0">
                     <button
                       onClick={() => handleUpdateQuantity(item.tempId, -1)}
-                      className="w-6 h-6 rounded-lg bg-white text-stone-900 hover:bg-stone-200 flex items-center justify-center font-bold text-xs shadow-2xs cursor-pointer"
+                      className="w-4 h-4 hover:text-[#C68A57] flex items-center justify-center"
                     >
-                      <Minus className="w-3 h-3" />
+                      <Minus className="w-2.5 h-2.5" />
                     </button>
-                    <span className="w-6 text-center text-xs font-mono font-black tabular-nums text-stone-900">
+                    <span className="w-3 text-center tabular-nums font-mono text-[11px]">
                       {item.quantity}
                     </span>
                     <button
                       onClick={() => handleUpdateQuantity(item.tempId, 1)}
-                      className="w-6 h-6 rounded-lg bg-white text-stone-900 hover:bg-stone-200 flex items-center justify-center font-bold text-xs shadow-2xs cursor-pointer"
+                      className="w-4 h-4 hover:text-[#C68A57] flex items-center justify-center"
                     >
-                      <Plus className="w-3 h-3" />
+                      <Plus className="w-2.5 h-2.5" />
                     </button>
                   </div>
                 </div>
-              </div>
-            ))
-          )}
+              ))
+            )}
+          </div>
         </div>
 
-        {/* Pricing Summary & Tender Action */}
-        <div className="p-4 border-t border-stone-200 bg-stone-50/70 space-y-3">
-          {/* Discounts Selector */}
-          <div className="space-y-1">
-            <div className="flex items-center justify-between text-xs">
-              <span className="text-stone-700 font-bold">Discount / Privilege:</span>
-              <select
-                value={discountType}
-                onChange={e => setDiscountType(e.target.value as any)}
-                className="bg-white border border-stone-200 text-xs text-stone-900 rounded-xl px-2.5 py-1 outline-hidden focus:border-stone-900 font-bold cursor-pointer"
-              >
-                <option value="none">No Discount</option>
-                <option value="senior">Senior Citizen (20%)</option>
-                <option value="pwd">PWD (20%)</option>
-                <option value="staff">Barista Staff (10%)</option>
-                <option value="custom">Custom %</option>
-              </select>
+        {/* Pricing Breakdown & Place An Order Button */}
+        <div className="pt-4 border-t border-[#F5EBE1] space-y-3">
+          <div className="space-y-1.5 text-xs">
+            <div className="flex items-center justify-between text-[#7D726A]">
+              <span>Price</span>
+              <span className="font-mono font-bold tabular-nums text-[#2B2521]">
+                {formatPHP(subtotalCents)}
+              </span>
             </div>
-            {discountType === 'custom' && (
-              <div className="flex items-center gap-2 mt-1">
-                <input
-                  type="number"
-                  min="1"
-                  max="100"
-                  value={customDiscountPercent}
-                  onChange={e => setCustomDiscountPercent(parseInt(e.target.value) || 0)}
-                  className="w-20 bg-white border border-stone-200 px-2 py-1 rounded-lg text-xs font-mono font-bold"
-                />
-                <span className="text-xs text-stone-600">% off ticket total</span>
+
+            {/* Discount selector button or line */}
+            <div className="flex items-center justify-between text-[#7D726A]">
+              <div className="flex items-center gap-1.5">
+                <span>Discount applied</span>
+                <select
+                  value={discountType}
+                  onChange={e => setDiscountType(e.target.value as any)}
+                  className="text-[10px] bg-[#FBF6F0] rounded-lg border border-[#EFE4D9] px-1.5 py-0.5 outline-hidden text-[#C68A57] font-semibold cursor-pointer"
+                >
+                  <option value="none">None</option>
+                  <option value="senior">Senior (20%)</option>
+                  <option value="pwd">PWD (20%)</option>
+                  <option value="staff">Staff (10%)</option>
+                  <option value="custom">Custom</option>
+                </select>
               </div>
-            )}
-          </div>
-
-          {/* Subtotal and Discount Rows */}
-          <div className="space-y-1 text-xs text-stone-700 font-semibold pt-1 border-t border-stone-200">
-            <div className="flex justify-between">
-              <span>Subtotal</span>
-              <span className="font-mono tabular-nums text-stone-900">{formatPHP(subtotalCents)}</span>
+              <span className="font-mono font-bold tabular-nums text-emerald-700">
+                {discountDetails.cents > 0 ? `-${formatPHP(discountDetails.cents)}` : '₱0.00'}
+              </span>
             </div>
-            {discountDetails.cents > 0 && (
-              <div className="flex justify-between text-rose-600 font-bold">
-                <span>{discountDetails.label}</span>
-                <span className="font-mono tabular-nums">-{formatPHP(discountDetails.cents)}</span>
-              </div>
-            )}
-            <div className="flex justify-between text-[11px] text-stone-500">
-              <span>12% VAT (Included)</span>
-              <span className="font-mono tabular-nums">{formatPHP(Math.round(totalCents * 0.12 / 1.12))}</span>
+
+            <div className="flex items-center justify-between pt-2 border-t border-[#F5EBE1]">
+              <span className="text-sm font-extrabold text-[#2B2521]">Grand total</span>
+              <span className="text-lg font-black text-[#2B2521] font-mono tabular-nums">
+                {formatPHP(totalCents)}
+              </span>
             </div>
           </div>
 
-          {/* Grand Total */}
-          <div className="flex items-baseline justify-between pt-2 border-t border-stone-200">
-            <span className="font-display font-black text-sm uppercase text-stone-900">Total Due</span>
-            <span className="text-3xl font-black font-mono tabular-nums text-stone-900">
-              {formatPHP(totalCents)}
-            </span>
-          </div>
-
-          {/* Primary Charge Button with Gen Z Lime Accent */}
+          {/* Large Place An Order Button */}
           <button
             onClick={handleOpenCheckout}
             disabled={cart.length === 0}
-            className={`w-full py-4 rounded-2xl font-black text-sm uppercase tracking-wider flex items-center justify-center gap-2 transition-all shadow-md cursor-pointer ${
+            className={`w-full py-3.5 rounded-2xl text-sm font-bold text-white transition-all shadow-md flex items-center justify-center gap-2 ${
               cart.length === 0
-                ? 'bg-stone-200 text-stone-400 cursor-not-allowed shadow-none'
-                : 'bg-[#B4EE10] hover:bg-[#CCFF00] active:scale-[0.98] text-[#14100E] shadow-[0_4px_20px_rgba(180,238,16,0.35)]'
+                ? 'bg-[#DECFC2] text-white/70 cursor-not-allowed'
+                : 'bg-[#C68A57] hover:bg-[#AC7140] active:scale-[0.98]'
             }`}
           >
-            <Banknote className="w-5 h-5" />
-            <span>CHARGE {formatPHP(totalCents)}</span>
+            <span>Place an order</span>
           </button>
         </div>
       </div>
 
       {/* PRODUCT CUSTOMIZER MODAL */}
       {customizingProduct && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4 overflow-y-auto">
-          <div className="w-full max-w-lg bg-white rounded-3xl shadow-2xl border border-stone-200 overflow-hidden my-6">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-xs p-4 overflow-y-auto">
+          <div className="w-full max-w-lg bg-white rounded-[32px] shadow-2xl border border-[#F5EBE1] overflow-hidden my-6">
             {/* Customizer Header */}
-            <div className="bg-[#14100E] text-white p-5 flex items-center justify-between">
+            <div className="bg-[#FFFDFB] p-6 border-b border-[#F5EBE1] flex items-center justify-between">
               <div>
-                <h3 className="font-display font-black text-base uppercase tracking-tight text-white">
+                <h3 className="font-extrabold text-lg text-[#2B2521]">
                   {customizingProduct.name}
                 </h3>
-                <p className="text-xs text-stone-300 mt-0.5">{customizingProduct.description}</p>
+                <p className="text-xs text-[#8C7F76] mt-0.5">{customizingProduct.description}</p>
               </div>
               <button
                 onClick={() => setCustomizingProduct(null)}
-                className="p-1.5 rounded-xl hover:bg-white/10 text-stone-300 hover:text-white cursor-pointer"
+                className="w-8 h-8 rounded-full bg-[#F5EBE1] hover:bg-[#EFE4D9] flex items-center justify-center text-xs font-bold text-[#5A4F47]"
               >
                 ✕
               </button>
             </div>
 
             {/* Sizes & Variants */}
-            <div className="p-6 space-y-5 max-h-[70vh] overflow-y-auto">
+            <div className="p-6 space-y-5 max-h-[65vh] overflow-y-auto">
               <div>
-                <label className="text-xs font-black uppercase tracking-wider text-stone-900 block mb-2 font-display">
-                  Select Size / Variant
+                <label className="text-xs font-bold uppercase tracking-wider text-[#5A4F47] block mb-2">
+                  Select Size
                 </label>
                 <div className="grid grid-cols-2 gap-2.5">
                   {customizingProduct.variants.map(variant => {
@@ -651,19 +742,19 @@ export const POSView: React.FC<POSViewProps> = ({
                         key={variant.id}
                         type="button"
                         onClick={() => setSelectedVariant(variant)}
-                        className={`p-3 rounded-2xl border text-left flex items-center justify-between transition cursor-pointer ${
+                        className={`p-3 rounded-2xl border text-left flex items-center justify-between transition ${
                           isSelected
-                            ? 'bg-stone-100 border-[#14100E] ring-2 ring-[#14100E]'
-                            : 'border-stone-200 hover:bg-stone-50'
+                            ? 'bg-[#FCEFE5] border-[#DEBEA6] text-[#C68A57] shadow-xs'
+                            : 'border-[#EFE4D9] hover:bg-[#FBF6F0]'
                         }`}
                       >
                         <div>
-                          <p className="text-xs font-bold text-stone-900">{variant.name}</p>
-                          <p className="text-xs font-mono font-black tabular-nums text-stone-900 mt-0.5">
+                          <p className="text-xs font-bold text-[#2B2521]">{variant.name}</p>
+                          <p className="text-xs font-mono font-bold tabular-nums text-[#C68A57] mt-0.5">
                             {formatPHP(variant.priceCents)}
                           </p>
                         </div>
-                        {isSelected && <Check className="w-4 h-4 text-stone-900" />}
+                        {isSelected && <Check className="w-4 h-4 text-[#C68A57]" />}
                       </button>
                     );
                   })}
@@ -676,8 +767,8 @@ export const POSView: React.FC<POSViewProps> = ({
                 if (!group) return null;
 
                 return (
-                  <div key={group.id} className="pt-2 border-t border-stone-200">
-                    <label className="text-xs font-black uppercase tracking-wider text-stone-900 block mb-2 font-display">
+                  <div key={group.id} className="pt-3 border-t border-[#F5EBE1]">
+                    <label className="text-xs font-bold uppercase tracking-wider text-[#5A4F47] block mb-2">
                       {group.name}
                     </label>
                     <div className="grid grid-cols-2 gap-2">
@@ -688,14 +779,14 @@ export const POSView: React.FC<POSViewProps> = ({
                             key={mod.id}
                             type="button"
                             onClick={() => toggleModifier(mod, group.maxSelection)}
-                            className={`p-2.5 rounded-2xl border text-left flex items-center justify-between transition cursor-pointer ${
+                            className={`p-2.5 rounded-xl border text-left flex items-center justify-between transition ${
                               isSelected
-                                ? 'bg-stone-100 border-[#14100E] ring-2 ring-[#14100E]'
-                                : 'border-stone-200 hover:bg-stone-50'
+                                ? 'bg-[#FCEFE5] border-[#DEBEA6] text-[#C68A57]'
+                                : 'border-[#EFE4D9] hover:bg-[#FBF6F0]'
                             }`}
                           >
-                            <span className="text-xs font-bold text-stone-900">{mod.name}</span>
-                            {isSelected && <Check className="w-3.5 h-3.5 text-stone-900" />}
+                            <span className="text-xs font-semibold text-[#2B2521]">{mod.name}</span>
+                            {isSelected && <Check className="w-3.5 h-3.5 text-[#C68A57]" />}
                           </button>
                         );
                       })}
@@ -705,8 +796,8 @@ export const POSView: React.FC<POSViewProps> = ({
               })}
 
               {/* Notes */}
-              <div className="pt-2 border-t border-stone-200">
-                <label className="text-xs font-black uppercase tracking-wider text-stone-900 block mb-1.5 font-display">
+              <div className="pt-3 border-t border-[#F5EBE1]">
+                <label className="text-xs font-bold uppercase tracking-wider text-[#5A4F47] block mb-1.5">
                   Barista Instructions
                 </label>
                 <input
@@ -714,16 +805,16 @@ export const POSView: React.FC<POSViewProps> = ({
                   placeholder="e.g. Extra hot, personal tumbler, oat milk foam..."
                   value={customizerNotes}
                   onChange={e => setCustomizerNotes(e.target.value)}
-                  className="w-full bg-white border border-stone-200 rounded-2xl px-3.5 py-2 text-xs text-stone-900 outline-hidden focus:border-stone-900"
+                  className="w-full bg-[#FBF6F0] border border-[#EFE4D9] rounded-xl px-3 py-2 text-xs text-[#2B2521] outline-hidden focus:border-[#C68A57]"
                 />
               </div>
             </div>
 
             {/* Customizer Footer */}
-            <div className="p-4 bg-stone-50 border-t border-stone-200 flex items-center justify-between">
+            <div className="p-5 bg-[#FFFDFB] border-t border-[#F5EBE1] flex items-center justify-between">
               <div>
-                <span className="text-xs text-stone-600 font-semibold">Item Total</span>
-                <p className="text-xl font-black font-mono tabular-nums text-stone-900">
+                <span className="text-xs text-[#8C7F76]">Item Total</span>
+                <p className="text-lg font-black font-mono tabular-nums text-[#2B2521]">
                   {formatPHP(
                     (selectedVariant?.priceCents || 0) +
                       selectedModifiers.reduce((sum, m) => sum + m.priceCents, 0)
@@ -734,14 +825,14 @@ export const POSView: React.FC<POSViewProps> = ({
                 <button
                   type="button"
                   onClick={() => setCustomizingProduct(null)}
-                  className="px-4 py-2.5 rounded-2xl text-xs font-bold text-stone-700 hover:bg-stone-200 transition cursor-pointer"
+                  className="px-4 py-2 rounded-xl text-xs font-semibold text-[#7D726A] hover:bg-[#F5EBE1] transition"
                 >
                   Cancel
                 </button>
                 <button
                   type="button"
-                  onClick={handleAddToCart}
-                  className="px-6 py-2.5 rounded-2xl text-xs font-black bg-[#14100E] text-[#B4EE10] hover:bg-stone-900 transition shadow-sm flex items-center gap-1.5 cursor-pointer"
+                  onClick={handleAddCustomizedToCart}
+                  className="px-5 py-2.5 rounded-xl text-xs font-bold bg-[#C68A57] hover:bg-[#AC7140] text-white transition shadow-xs flex items-center gap-1.5"
                 >
                   <Plus className="w-4 h-4" />
                   <span>Add to Ticket</span>
@@ -754,21 +845,21 @@ export const POSView: React.FC<POSViewProps> = ({
 
       {/* CHECKOUT MODAL */}
       {isCheckoutOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4 overflow-y-auto">
-          <div className="w-full max-w-xl bg-white rounded-3xl shadow-2xl border border-stone-200 overflow-hidden my-6">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-xs p-4 overflow-y-auto">
+          <div className="w-full max-w-xl bg-white rounded-[32px] shadow-2xl border border-[#F5EBE1] overflow-hidden my-6">
             {/* Header */}
-            <div className="bg-[#14100E] text-white p-5 flex items-center justify-between">
+            <div className="bg-[#FFFDFB] p-6 border-b border-[#F5EBE1] flex items-center justify-between">
               <div>
-                <span className="text-xs text-[#B4EE10] font-mono font-bold tracking-wider uppercase">
+                <span className="text-xs text-[#C68A57] font-bold tracking-wider uppercase">
                   Tender Payment
                 </span>
-                <h3 className="font-display font-black text-xl mt-0.5 uppercase tracking-tight text-white">
-                  Checkout Cashier
+                <h3 className="font-extrabold text-xl text-[#2B2521] mt-0.5">
+                  Complete Order
                 </h3>
               </div>
               <div className="text-right">
-                <span className="text-xs text-stone-300">Total Due</span>
-                <p className="text-3xl font-black font-mono tabular-nums text-white">
+                <span className="text-xs text-[#8C7F76]">Total Due</span>
+                <p className="text-2xl font-black font-mono tabular-nums text-[#2B2521]">
                   {formatPHP(totalCents)}
                 </p>
               </div>
@@ -776,10 +867,10 @@ export const POSView: React.FC<POSViewProps> = ({
 
             {/* Body */}
             <div className="p-6 space-y-5">
-              {/* Payment Methods Tabs */}
+              {/* Payment Methods */}
               <div className="grid grid-cols-4 gap-2">
                 {[
-                  { id: 'cash', label: 'Cash (PHP)', icon: Banknote },
+                  { id: 'cash', label: 'Cash', icon: Banknote },
                   { id: 'gcash', label: 'GCash', icon: Smartphone },
                   { id: 'maya', label: 'Maya', icon: Smartphone },
                   { id: 'card_pos', label: 'Card POS', icon: CreditCard }
@@ -794,14 +885,14 @@ export const POSView: React.FC<POSViewProps> = ({
                         setPaymentMethod(tab.id as PaymentMethod);
                         setCheckoutError(null);
                       }}
-                      className={`p-3 rounded-2xl border text-center flex flex-col items-center gap-1.5 transition cursor-pointer ${
+                      className={`p-3 rounded-2xl border text-center flex flex-col items-center gap-1.5 transition ${
                         isSelected
-                          ? 'bg-[#14100E] text-[#B4EE10] border-[#14100E] shadow-sm font-black'
-                          : 'border-stone-200 hover:bg-stone-50 text-stone-700 font-bold'
+                          ? 'bg-[#FCEFE5] text-[#C68A57] border-[#DEBEA6] shadow-xs font-bold'
+                          : 'border-[#EFE4D9] hover:bg-[#FBF6F0] text-[#5A4F47]'
                       }`}
                     >
                       <Icon className="w-5 h-5" />
-                      <span className="text-xs">{tab.label}</span>
+                      <span className="text-xs font-semibold">{tab.label}</span>
                     </button>
                   );
                 })}
@@ -810,9 +901,8 @@ export const POSView: React.FC<POSViewProps> = ({
               {/* Cash Payment Mode */}
               {paymentMethod === 'cash' ? (
                 <div className="space-y-4">
-                  {/* Quick Bill Selectors */}
                   <div>
-                    <label className="text-xs font-black uppercase tracking-wider text-stone-700 block mb-2 font-display">
+                    <label className="text-xs font-bold uppercase tracking-wider text-[#8C7F76] block mb-2">
                       Quick Cash Presets
                     </label>
                     <div className="grid grid-cols-5 gap-2">
@@ -827,7 +917,7 @@ export const POSView: React.FC<POSViewProps> = ({
                           key={bill.label}
                           type="button"
                           onClick={() => setCashTenderedInput(bill.amount.toString())}
-                          className="py-2.5 rounded-2xl bg-stone-100 hover:bg-stone-200 border border-stone-200 text-xs font-black font-mono tabular-nums text-stone-900 active:scale-95 transition cursor-pointer"
+                          className="py-2.5 rounded-xl bg-[#F9F4EE] hover:bg-[#F3E9DF] border border-[#EFE4D9] text-xs font-bold font-mono tabular-nums text-[#2B2521] active:scale-95 transition"
                         >
                           {bill.label}
                         </button>
@@ -835,10 +925,9 @@ export const POSView: React.FC<POSViewProps> = ({
                     </div>
                   </div>
 
-                  {/* Cash Input & Change Calculation */}
                   <div className="grid grid-cols-2 gap-4">
                     <div>
-                      <label className="text-xs font-black uppercase tracking-wider text-stone-700 block mb-1 font-display">
+                      <label className="text-xs font-bold uppercase tracking-wider text-[#8C7F76] block mb-1">
                         Cash Tendered (₱)
                       </label>
                       <input
@@ -846,17 +935,17 @@ export const POSView: React.FC<POSViewProps> = ({
                         step="1"
                         value={cashTenderedInput}
                         onChange={e => setCashTenderedInput(e.target.value)}
-                        className="w-full bg-white border-2 border-stone-300 focus:border-[#14100E] rounded-2xl px-4 py-3 text-2xl font-black font-mono tabular-nums text-stone-900 outline-hidden"
+                        className="w-full bg-[#FBF6F0] border border-[#EFE4D9] rounded-xl px-4 py-3 text-xl font-bold font-mono tabular-nums text-[#2B2521] focus:border-[#C68A57] outline-hidden"
                       />
                     </div>
                     <div>
-                      <label className="text-xs font-black uppercase tracking-wider text-stone-700 block mb-1 font-display">
+                      <label className="text-xs font-bold uppercase tracking-wider text-[#8C7F76] block mb-1">
                         Change Due
                       </label>
                       <div
-                        className={`w-full border-2 rounded-2xl px-4 py-3 text-2xl font-black font-mono tabular-nums flex items-center justify-between ${
+                        className={`w-full border rounded-xl px-4 py-3 text-xl font-black font-mono tabular-nums flex items-center justify-between ${
                           tenderedCents >= totalCents
-                            ? 'bg-emerald-50 text-emerald-800 border-emerald-400'
+                            ? 'bg-emerald-50 text-emerald-800 border-emerald-300'
                             : 'bg-rose-50 text-rose-700 border-rose-300'
                         }`}
                       >
@@ -866,70 +955,68 @@ export const POSView: React.FC<POSViewProps> = ({
                   </div>
                 </div>
               ) : (
-                /* Electronic / Card Payment Mode (Offline Confirmation Logger) */
-                <div className="space-y-4 bg-stone-50 p-5 rounded-2xl border border-stone-200">
-                  <div className="flex items-start gap-2.5 text-xs text-stone-800">
-                    <Smartphone className="w-5 h-5 text-stone-900 shrink-0 mt-0.5" />
+                <div className="space-y-4 bg-[#FBF6F0] p-4 rounded-2xl border border-[#EFE4D9]">
+                  <div className="flex items-start gap-2.5 text-xs text-[#2B2521]">
+                    <Smartphone className="w-5 h-5 text-[#C68A57] shrink-0 mt-0.5" />
                     <div>
-                      <p className="font-black text-stone-900 text-sm">Offline Payment Confirmation</p>
-                      <p className="text-stone-600 mt-1 leading-relaxed">
-                        C5ISR operates offline. The cashier checks the customer's phone confirmation screen and logs the reference number below.
+                      <p className="font-bold">E-Wallet Confirmation</p>
+                      <p className="text-[#8C7F76] mt-0.5 leading-relaxed">
+                        Verify customer's payment screen and record reference number.
                       </p>
                     </div>
                   </div>
 
                   <div>
-                    <label className="text-xs font-black uppercase tracking-wider text-stone-900 block mb-1 font-display">
-                      {paymentMethod.toUpperCase()} Approval / Reference Number *
+                    <label className="text-xs font-bold uppercase tracking-wider text-[#2B2521] block mb-1">
+                      {paymentMethod.toUpperCase()} Approval Reference # *
                     </label>
                     <input
                       type="text"
                       placeholder="e.g. 984321, APPR-0192"
                       value={referenceNumber}
                       onChange={e => setReferenceNumber(e.target.value)}
-                      className="w-full bg-white border-2 border-stone-300 focus:border-[#14100E] rounded-2xl px-4 py-3 text-sm font-mono font-black text-stone-900 uppercase outline-hidden"
+                      className="w-full bg-white border border-[#EFE4D9] rounded-xl px-4 py-2.5 text-sm font-mono font-bold text-[#2B2521] uppercase outline-hidden focus:border-[#C68A57]"
                     />
                   </div>
 
-                  <label className="flex items-center gap-2.5 cursor-pointer pt-1">
+                  <label className="flex items-center gap-2 cursor-pointer pt-1">
                     <input
                       type="checkbox"
                       checked={isConfirmedOnlineRef}
                       onChange={e => setIsConfirmedOnlineRef(e.target.checked)}
-                      className="w-4 h-4 rounded text-stone-900 focus:ring-stone-900"
+                      className="w-4 h-4 rounded text-[#C68A57] focus:ring-[#C68A57]"
                     />
-                    <span className="text-xs font-bold text-stone-800">
-                      I have verified the customer's successful payment screen.
+                    <span className="text-xs font-semibold text-[#2B2521]">
+                      I have confirmed the customer's payment screen.
                     </span>
                   </label>
                 </div>
               )}
 
-              {/* Error Message */}
               {checkoutError && (
-                <div className="flex items-center gap-2 p-3.5 rounded-2xl bg-rose-50 text-rose-800 border border-rose-200 text-xs font-bold">
-                  <AlertTriangle className="w-4 h-4 shrink-0 text-rose-600" />
+                <div className="flex items-center gap-2 p-3 rounded-xl bg-rose-50 text-rose-700 border border-rose-200 text-xs font-medium">
+                  <AlertTriangle className="w-4 h-4 shrink-0" />
                   <span>{checkoutError}</span>
                 </div>
               )}
             </div>
 
             {/* Modal Actions */}
-            <div className="p-4 bg-white border-t border-stone-200 flex justify-end gap-3">
+            <div className="p-5 bg-white border-t border-[#F5EBE1] flex justify-end gap-3">
               <button
                 type="button"
                 onClick={() => setIsCheckoutOpen(false)}
-                className="px-5 py-3 rounded-2xl text-xs font-bold text-stone-700 hover:bg-stone-100 border border-stone-200 transition cursor-pointer"
+                className="px-5 py-2.5 rounded-xl text-xs font-semibold text-[#7D726A] hover:bg-[#F5EBE1] border border-[#EFE4D9] transition"
               >
                 Back to Ticket
               </button>
               <button
                 type="button"
                 onClick={handleCompleteSale}
-                className="px-7 py-3 rounded-2xl text-xs font-black bg-[#14100E] hover:bg-stone-900 text-[#B4EE10] transition shadow-md flex items-center gap-2 cursor-pointer"
+                className="px-6 py-2.5 rounded-xl text-xs font-bold bg-[#C68A57] hover:bg-[#AC7140] text-white transition shadow-md flex items-center gap-2"
               >
                 <Check className="w-4 h-4" />
-                <span>Complete & Print Receipt</span>
+                <span>Complete Order</span>
               </button>
             </div>
           </div>
@@ -944,14 +1031,14 @@ export const POSView: React.FC<POSViewProps> = ({
         settings={settings}
       />
 
-      {/* INVENTORY ALERTS BANNER (AFTER CHECKOUT) */}
+      {/* INVENTORY ALERTS */}
       {inventoryWarnings.length > 0 && (
-        <div className="fixed bottom-4 left-68 right-8 z-40 bg-amber-50 border-2 border-amber-300 rounded-2xl p-4 shadow-xl flex items-center justify-between text-xs text-amber-950">
-          <div className="flex items-center gap-2.5">
-            <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0" />
+        <div className="fixed bottom-4 left-68 right-8 z-40 bg-amber-50 border border-amber-300 rounded-2xl p-3 shadow-lg flex items-center justify-between text-xs text-amber-900">
+          <div className="flex items-center gap-2">
+            <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
             <div className="space-y-0.5">
               {inventoryWarnings.map((w, i) => (
-                <p key={i} className="font-bold">
+                <p key={i} className="font-medium">
                   {w}
                 </p>
               ))}
@@ -959,7 +1046,7 @@ export const POSView: React.FC<POSViewProps> = ({
           </div>
           <button
             onClick={() => setInventoryWarnings([])}
-            className="text-amber-900 hover:text-black font-black text-xs px-3 py-1 bg-amber-200 rounded-xl"
+            className="text-amber-800 hover:text-black font-bold text-xs px-2 py-1"
           >
             Dismiss
           </button>

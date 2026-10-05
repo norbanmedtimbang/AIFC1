@@ -83,7 +83,19 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 -- Run in Supabase SQL Editor:
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
-CREATE TABLE IF NOT EXISTS public.users (
+DROP TABLE IF EXISTS public.recipes CASCADE;
+DROP TABLE IF EXISTS public.sale_items CASCADE;
+DROP TABLE IF EXISTS public.sales CASCADE;
+DROP TABLE IF EXISTS public.product_variants CASCADE;
+DROP TABLE IF EXISTS public.products CASCADE;
+DROP TABLE IF EXISTS public.inventory_movements CASCADE;
+DROP TABLE IF EXISTS public.inventory_items CASCADE;
+DROP TABLE IF EXISTS public.categories CASCADE;
+DROP TABLE IF EXISTS public.cash_movements CASCADE;
+DROP TABLE IF EXISTS public.cashier_shifts CASCADE;
+DROP TABLE IF EXISTS public.users CASCADE;
+
+CREATE TABLE public.users (
     id TEXT PRIMARY KEY,
     username TEXT UNIQUE NOT NULL,
     pin_hash TEXT NOT NULL,

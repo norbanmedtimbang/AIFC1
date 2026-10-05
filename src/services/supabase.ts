@@ -1,5 +1,6 @@
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
-import { db } from './storage';
+import { db, setProductSyncListener } from './storage';
+import { Product, RecipeIngredient } from '../types';
 
 const rawUrl = (
   import.meta.env.VITE_SUPABASE_URL || 'https://opnihchpbzotimnjkngu.supabase.co'
@@ -31,6 +32,15 @@ export const supabase: SupabaseClient | null = isSupabaseConfigured()
     })
   : null;
 
+// Automatically push menu products and recipe changes to Supabase in real time
+setProductSyncListener((product, action) => {
+  if (action === 'save') {
+    syncProductAndRecipesToSupabase(product);
+  } else if (action === 'delete') {
+    deleteProductFromSupabase(product.id);
+  }
+});
+
 /**
  * Tests connection to Supabase database by attempting a quiet select on users or categories
  */
@@ -49,10 +59,15 @@ export async function testSupabaseConnection(): Promise<{
   try {
     const { data, error } = await supabase.from('users').select('id').limit(1);
     if (error) {
-      if (error.message.includes('relation "public.users" does not exist')) {
+      if (
+        error.message.includes('relation "public.users" does not exist') ||
+        error.message.includes('column products.id does not exist') ||
+        error.code === '42P01' ||
+        error.code === '42703'
+      ) {
         return {
           ok: false,
-          message: 'Connected to Supabase project, but tables are not created yet! Run the database/supabase_schema.sql script in Supabase SQL Editor.'
+          message: 'Connected to Supabase, but PostgreSQL tables are not created yet! Go to Supabase SQL Editor and run the database/supabase_schema.sql script.'
         };
       }
       return {
@@ -75,7 +90,76 @@ export async function testSupabaseConnection(): Promise<{
 }
 
 /**
- * Pushes local SQLite/browser data to Supabase cloud
+ * Syncs a single product and its variants and recipe ingredients straight to Supabase
+ */
+export async function syncProductAndRecipesToSupabase(product: Product): Promise<void> {
+  if (!isSupabaseConfigured() || !supabase) return;
+
+  try {
+    // 1. Upsert product
+    const { error: pErr } = await supabase.from('products').upsert({
+      id: product.id,
+      category_id: product.categoryId,
+      sku: product.sku || null,
+      name: product.name,
+      description: product.description || null,
+      image_url: product.imageUrl || null,
+      is_active: product.isActive,
+      display_order: product.displayOrder
+    });
+
+    if (pErr) {
+      console.warn('Supabase product upsert notice:', pErr.message);
+      return;
+    }
+
+    // 2. Upsert variants
+    for (const v of product.variants) {
+      await supabase.from('product_variants').upsert({
+        id: v.id,
+        product_id: product.id,
+        name: v.name,
+        sku: v.sku || null,
+        price_cents: v.priceCents,
+        cost_price_cents: v.costPriceCents,
+        is_active: v.isActive
+      });
+
+      // 3. Upsert recipe bill of materials for this variant
+      const ingredients = product.recipes?.[v.id] || [];
+      // Clear previous recipes for this variant
+      await supabase.from('recipes').delete().eq('variant_id', v.id);
+
+      if (ingredients.length > 0) {
+        await supabase.from('recipes').insert(
+          ingredients.map((ing: RecipeIngredient) => ({
+            id: `recipe-${v.id}-${ing.inventoryItemId}`,
+            variant_id: v.id,
+            inventory_item_id: ing.inventoryItemId,
+            quantity_required: ing.quantityRequired
+          }))
+        );
+      }
+    }
+  } catch (err) {
+    console.error('Real-time Supabase product sync skipped (offline or tables pending):', err);
+  }
+}
+
+/**
+ * Deletes a product from Supabase
+ */
+export async function deleteProductFromSupabase(productId: string): Promise<void> {
+  if (!isSupabaseConfigured() || !supabase) return;
+  try {
+    await supabase.from('products').delete().eq('id', productId);
+  } catch (err) {
+    console.error('Failed to delete product from Supabase:', err);
+  }
+}
+
+/**
+ * Pushes all local SQLite/browser data to Supabase cloud
  */
 export async function pushLocalDataToSupabase(): Promise<{
   ok: boolean;
@@ -93,7 +177,7 @@ export async function pushLocalDataToSupabase(): Promise<{
 
     // 1. Sync Categories
     if (local.categories.length > 0) {
-      await supabase.from('categories').upsert(
+      const { error: catErr } = await supabase.from('categories').upsert(
         local.categories.map((c: any) => ({
           id: c.id,
           name: c.name,
@@ -101,9 +185,31 @@ export async function pushLocalDataToSupabase(): Promise<{
           color_code: c.colorCode
         }))
       );
+      if (catErr) {
+        return {
+          ok: false,
+          message: `Supabase table missing or error: ${catErr.message}. Make sure to execute database/supabase_schema.sql in the Supabase SQL Editor.`
+        };
+      }
     }
 
-    // 2. Sync Products & Variants
+    // 2. Sync Inventory Items first (so foreign keys in recipes work)
+    if (local.inventoryItems.length > 0) {
+      await supabase.from('inventory_items').upsert(
+        local.inventoryItems.map((item: any) => ({
+          id: item.id,
+          sku: item.sku || null,
+          name: item.name,
+          unit: item.unit,
+          current_stock: item.currentStock,
+          min_threshold: item.minThreshold,
+          cost_per_unit_cents: item.costPerUnitCents
+        }))
+      );
+    }
+
+    // 3. Sync Products, Variants, and Recipes
+    let totalRecipes = 0;
     for (const p of local.products) {
       await supabase.from('products').upsert({
         id: p.id,
@@ -126,25 +232,26 @@ export async function pushLocalDataToSupabase(): Promise<{
           cost_price_cents: v.costPriceCents,
           is_active: v.isActive
         });
+
+        // Sync Recipes (BOM)
+        const ingredients = p.recipes?.[v.id] || [];
+        if (ingredients.length > 0) {
+          // Clear and re-insert
+          await supabase.from('recipes').delete().eq('variant_id', v.id);
+          await supabase.from('recipes').insert(
+            ingredients.map((ing: RecipeIngredient) => ({
+              id: `recipe-${v.id}-${ing.inventoryItemId}`,
+              variant_id: v.id,
+              inventory_item_id: ing.inventoryItemId,
+              quantity_required: ing.quantityRequired
+            }))
+          );
+          totalRecipes += ingredients.length;
+        }
       }
     }
 
-    // 3. Sync Inventory Items
-    if (local.inventoryItems.length > 0) {
-      await supabase.from('inventory_items').upsert(
-        local.inventoryItems.map((item: any) => ({
-          id: item.id,
-          sku: item.sku || null,
-          name: item.name,
-          unit: item.unit,
-          current_stock: item.currentStock,
-          min_threshold: item.minThreshold,
-          cost_per_unit_cents: item.costPerUnitCents
-        }))
-      );
-    }
-
-    // 4. Sync Sales
+    // 4. Sync Sales & Sale Items
     for (const s of local.sales) {
       await supabase.from('sales').upsert({
         id: s.id,
@@ -185,7 +292,7 @@ export async function pushLocalDataToSupabase(): Promise<{
 
     return {
       ok: true,
-      message: `Cloud sync complete! Pushed ${local.products.length} products, ${local.inventoryItems.length} inventory items, and ${local.sales.length} orders.`
+      message: `Cloud sync complete! Pushed ${local.products.length} products, ${totalRecipes} recipe links, ${local.inventoryItems.length} inventory items, and ${local.sales.length} orders.`
     };
   } catch (err) {
     return {
