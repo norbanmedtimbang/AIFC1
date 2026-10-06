@@ -5,7 +5,8 @@ import {
   History,
   TrendingDown,
   TrendingUp,
-  X
+  X,
+  AlertTriangle
 } from 'lucide-react';
 import { InventoryItem, InventoryMovement, InventoryMovementType } from '../../types';
 import { formatPHP, parsePHPAmountToCents } from '../../services/storage';
@@ -41,6 +42,10 @@ export const InventoryView: React.FC<InventoryViewProps> = ({
   const [newItemThreshold, setNewItemThreshold] = useState('200');
   const [newItemCostCents, setNewItemCostCents] = useState('50');
 
+  // Modal Error & Submitting State
+  const [modalError, setModalError] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
   // Filtered Items
   const filteredItems = inventoryItems.filter(item => {
     const matchesSearch =
@@ -60,18 +65,20 @@ export const InventoryView: React.FC<InventoryViewProps> = ({
   // Commit Adjustment
   const handleCommitAdjustment = async () => {
     if (!selectedItemForAdjust) return;
+    setModalError(null);
     const qty = parseFloat(adjustQuantity);
-    if (isNaN(qty) || qty === 0) {
-      alert('Please enter a valid non-zero adjustment quantity.');
+    if (isNaN(qty) || qty <= 0) {
+      setModalError('Please enter a valid positive quantity to adjust.');
       return;
     }
     if (!adjustNotes.trim()) {
-      alert('A reason/note is required for inventory audit integrity.');
+      setModalError('A reason/note is required for inventory audit integrity.');
       return;
     }
 
     const delta = adjustType === 'waste' || adjustType === 'spill' ? -Math.abs(qty) : qty;
 
+    setIsSubmitting(true);
     try {
       await dataService.adjustInventoryStock(
         selectedItemForAdjust.id,
@@ -85,14 +92,17 @@ export const InventoryView: React.FC<InventoryViewProps> = ({
       setAdjustNotes('');
       onRefreshData();
     } catch (err) {
-      alert('Inventory adjustment failed: ' + (err as Error).message);
+      setModalError('Inventory adjustment failed: ' + (err as Error).message);
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
   // Add Item
   const handleAddNewItem = async () => {
+    setModalError(null);
     if (!newItemName.trim()) {
-      alert('Please enter an item name.');
+      setModalError('Please enter an item name.');
       return;
     }
     const item: InventoryItem = {
@@ -100,21 +110,24 @@ export const InventoryView: React.FC<InventoryViewProps> = ({
       sku: newItemSku.trim() || undefined,
       name: newItemName.trim(),
       unit: newItemUnit,
-      currentStock: parseFloat(newItemStock) || 0,
-      minThreshold: parseFloat(newItemThreshold) || 10,
-      costPerUnitCents: parsePHPAmountToCents(parseFloat(newItemCostCents) || 0),
+      currentStock: Math.max(0, parseFloat(newItemStock) || 0),
+      minThreshold: Math.max(0, parseFloat(newItemThreshold) || 10),
+      costPerUnitCents: parsePHPAmountToCents(Math.max(0, parseFloat(newItemCostCents) || 0)),
       updatedAt: new Date().toISOString()
     };
 
+    setIsSubmitting(true);
     try {
       await dataService.saveInventoryItem(item);
       setIsNewItemModalOpen(false);
       setNewItemName('');
       setNewItemSku('');
-      setNewItemStock('0');
+      setNewItemStock('1000');
       onRefreshData();
     } catch (err) {
-      alert('Failed to save inventory item: ' + (err as Error).message);
+      setModalError('Failed to save inventory item: ' + (err as Error).message);
+    } finally {
+      setIsSubmitting(false);
     }
   };
 

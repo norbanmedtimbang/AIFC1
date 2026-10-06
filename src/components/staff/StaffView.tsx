@@ -10,7 +10,8 @@ import {
   Check,
   AlertTriangle,
   Clock,
-  DollarSign
+  DollarSign,
+  Trash2
 } from 'lucide-react';
 import { User, CashierShift, CashMovement, Sale, Expense } from '../../types';
 import { db, formatPHP, parsePHPAmountToCents } from '../../services/storage';
@@ -62,6 +63,10 @@ export const StaffView: React.FC<StaffViewProps> = ({
   const [newRole, setNewRole] = useState<'admin' | 'manager' | 'cashier'>('cashier');
   const [newPin, setNewPin] = useState('');
 
+  // Modal errors and loading states
+  const [modalError, setModalError] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
   // Active shift calculations
   const shiftCashSales = activeShift
     ? sales
@@ -93,32 +98,39 @@ export const StaffView: React.FC<StaffViewProps> = ({
 
   // Open Shift
   const handleOpenShift = async () => {
+    setModalError(null);
     const floatPHP = parseFloat(openingFloatInput);
     if (isNaN(floatPHP) || floatPHP < 0) {
-      alert('Please enter a valid opening float.');
+      setModalError('Please enter a valid non-negative opening float amount.');
       return;
     }
+    setIsSubmitting(true);
     try {
       await dataService.openShift(parsePHPAmountToCents(floatPHP), openingNotes.trim() || undefined);
       setIsOpenShiftModalOpen(false);
+      setOpeningNotes('');
       onRefreshData();
     } catch (err) {
-      alert('Failed to open shift: ' + (err as Error).message);
+      setModalError('Failed to open shift: ' + (err as Error).message);
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
   // Cash In / Cash Out
   const handleRecordCashMovement = async () => {
+    setModalError(null);
     const amountPHP = parseFloat(movementAmountInput);
     if (isNaN(amountPHP) || amountPHP <= 0) {
-      alert('Please enter a valid amount.');
+      setModalError('Please enter a valid cash amount greater than zero.');
       return;
     }
     if (!movementReason.trim()) {
-      alert('Please provide a reason for the cash movement.');
+      setModalError('A reason is required for cash movement audit trail.');
       return;
     }
 
+    setIsSubmitting(true);
     try {
       await dataService.addCashMovement(movementType, parsePHPAmountToCents(amountPHP), movementReason.trim());
       setIsCashMovementModalOpen(false);
@@ -126,18 +138,22 @@ export const StaffView: React.FC<StaffViewProps> = ({
       setMovementReason('');
       onRefreshData();
     } catch (err) {
-      alert('Failed to record cash movement: ' + (err as Error).message);
+      setModalError('Failed to record cash movement: ' + (err as Error).message);
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
   // Close Shift
   const handleCloseShift = async () => {
+    setModalError(null);
     const countedPHP = parseFloat(countedCashInput);
     if (isNaN(countedPHP) || countedPHP < 0) {
-      alert('Please enter the counted cash.');
+      setModalError('Please enter the actual counted cash in the drawer.');
       return;
     }
 
+    setIsSubmitting(true);
     try {
       await dataService.closeShift(parsePHPAmountToCents(countedPHP), closingNotes.trim() || undefined);
       setIsCloseShiftModalOpen(false);
@@ -145,34 +161,60 @@ export const StaffView: React.FC<StaffViewProps> = ({
       setClosingNotes('');
       onRefreshData();
     } catch (err) {
-      alert('Failed to close shift: ' + (err as Error).message);
+      setModalError('Failed to close shift: ' + (err as Error).message);
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
   // Add User
-  const handleAddUser = () => {
+  const handleAddUser = async () => {
+    setModalError(null);
     if (!newFullName.trim() || !newUsername.trim()) {
-      alert('Please fill out user name and username.');
+      setModalError('Please enter both full name and username.');
       return;
     }
     if (newPin.length !== 4 || isNaN(Number(newPin))) {
-      alert('PIN must be exactly 4 digits.');
+      setModalError('Terminal PIN must be exactly 4 numeric digits.');
       return;
     }
 
-    db.addUser({
-      username: newUsername.toLowerCase().trim(),
-      fullName: newFullName.trim(),
-      role: newRole,
-      pinHash: newPin,
-      status: 'active'
-    });
+    setIsSubmitting(true);
+    try {
+      await dataService.saveUser({
+        username: newUsername.toLowerCase().trim(),
+        fullName: newFullName.trim(),
+        role: newRole,
+        pinHash: newPin,
+        status: 'active'
+      });
 
-    setIsUserModalOpen(false);
-    setNewFullName('');
-    setNewUsername('');
-    setNewPin('');
-    onRefreshData();
+      setIsUserModalOpen(false);
+      setNewFullName('');
+      setNewUsername('');
+      setNewPin('');
+      onRefreshData();
+    } catch (err) {
+      setModalError((err as Error).message);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  // Delete User
+  const handleDeleteUser = async (userId: string, userName: string) => {
+    if (userId === currentUser.id) {
+      alert('You cannot delete your own active session account.');
+      return;
+    }
+    if (window.confirm(`Are you sure you want to remove staff account "${userName}"?`)) {
+      try {
+        await dataService.deleteUser(userId);
+        onRefreshData();
+      } catch (err) {
+        alert('Failed to remove staff member: ' + (err as Error).message);
+      }
+    }
   };
 
   return (
@@ -253,7 +295,7 @@ export const StaffView: React.FC<StaffViewProps> = ({
               <span className="text-[10px] font-bold uppercase text-c5-charcoal-muted">
                 Opening Float
               </span>
-              <p className="text-lg font-black font-mono text-c5-charcoal mt-1">
+              <p className="text-lg font-bold font-mono text-c5-charcoal mt-1">
                 {formatPHP(activeShift.openingCashCents)}
               </p>
             </div>
@@ -261,7 +303,7 @@ export const StaffView: React.FC<StaffViewProps> = ({
               <span className="text-[10px] font-bold uppercase text-c5-charcoal-muted">
                 Cash Sales
               </span>
-              <p className="text-lg font-black font-mono text-emerald-700 mt-1">
+              <p className="text-lg font-bold font-mono text-emerald-700 mt-1">
                 +{formatPHP(shiftCashSales)}
               </p>
             </div>
@@ -269,7 +311,7 @@ export const StaffView: React.FC<StaffViewProps> = ({
               <span className="text-[10px] font-bold uppercase text-c5-charcoal-muted">
                 Cash In / Adds
               </span>
-              <p className="text-lg font-black font-mono text-c5-charcoal mt-1">
+              <p className="text-lg font-bold font-mono text-c5-charcoal mt-1">
                 +{formatPHP(shiftCashIn)}
               </p>
             </div>
@@ -277,7 +319,7 @@ export const StaffView: React.FC<StaffViewProps> = ({
               <span className="text-[10px] font-bold uppercase text-c5-charcoal-muted">
                 Drops & Petty Cash
               </span>
-              <p className="text-lg font-black font-mono text-rose-600 mt-1">
+              <p className="text-lg font-bold font-mono text-rose-600 mt-1">
                 -{formatPHP(shiftCashOut + shiftExpenses)}
               </p>
             </div>
@@ -285,7 +327,7 @@ export const StaffView: React.FC<StaffViewProps> = ({
               <span className="text-[10px] font-bold uppercase text-c5-sage">
                 Expected in Drawer
               </span>
-              <p className="text-xl font-black font-mono text-white mt-1">
+              <p className="text-xl font-bold font-mono text-white mt-1">
                 {formatPHP(expectedDrawerCashCents)}
               </p>
             </div>
@@ -325,11 +367,22 @@ export const StaffView: React.FC<StaffViewProps> = ({
                   </p>
                 </div>
               </div>
-              <div className="text-right">
-                <span className="text-[10px] text-c5-charcoal-muted uppercase block">PIN</span>
-                <span className="font-mono font-bold text-xs bg-c5-cream px-2 py-0.5 rounded border border-c5-beige">
-                  ••••
-                </span>
+              <div className="flex items-center gap-2">
+                <div className="text-right">
+                  <span className="text-[10px] text-c5-charcoal-muted uppercase block">PIN</span>
+                  <span className="font-mono font-bold text-xs bg-c5-cream px-2 py-0.5 rounded border border-c5-beige">
+                    ••••
+                  </span>
+                </div>
+                {currentUser.role === 'admin' && u.id !== currentUser.id && (
+                  <button
+                    onClick={() => handleDeleteUser(u.id, u.fullName)}
+                    title="Remove user"
+                    className="p-1.5 rounded-lg text-stone-400 hover:text-rose-600 hover:bg-rose-50 transition cursor-pointer"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                )}
               </div>
             </div>
           ))}
@@ -354,6 +407,12 @@ export const StaffView: React.FC<StaffViewProps> = ({
             </div>
 
             <div className="p-6 space-y-4 text-xs">
+              {modalError && (
+                <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-xs text-rose-700 flex items-center gap-2">
+                  <AlertTriangle className="w-4 h-4 shrink-0 text-rose-600" />
+                  <span>{modalError}</span>
+                </div>
+              )}
               <div>
                 <label className="font-bold text-c5-charcoal block mb-1 uppercase text-[10px]">
                   Opening Cash Float (PHP) *
@@ -383,17 +442,22 @@ export const StaffView: React.FC<StaffViewProps> = ({
 
             <div className="p-4 bg-c5-cream/40 border-t border-c5-beige flex justify-end gap-3">
               <button
-                onClick={() => setIsOpenShiftModalOpen(false)}
+                onClick={() => {
+                  setIsOpenShiftModalOpen(false);
+                  setModalError(null);
+                }}
+                disabled={isSubmitting}
                 className="px-4 py-2 rounded-xl text-xs font-semibold text-c5-charcoal hover:bg-c5-beige"
               >
                 Cancel
               </button>
               <button
                 onClick={handleOpenShift}
-                className="px-5 py-2.5 rounded-xl text-xs font-bold bg-c5-espresso text-c5-cream hover:bg-c5-espresso-dark flex items-center gap-1.5"
+                disabled={isSubmitting}
+                className="px-5 py-2.5 rounded-xl text-xs font-bold bg-c5-espresso text-c5-cream hover:bg-c5-espresso-dark flex items-center gap-1.5 disabled:opacity-50"
               >
                 <Check className="w-4 h-4" />
-                <span>Confirm & Open Shift</span>
+                <span>{isSubmitting ? 'Opening Shift...' : 'Confirm & Open Shift'}</span>
               </button>
             </div>
           </div>
@@ -418,6 +482,12 @@ export const StaffView: React.FC<StaffViewProps> = ({
             </div>
 
             <div className="p-6 space-y-4 text-xs">
+              {modalError && (
+                <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-xs text-rose-700 flex items-center gap-2">
+                  <AlertTriangle className="w-4 h-4 shrink-0 text-rose-600" />
+                  <span>{modalError}</span>
+                </div>
+              )}
               <div>
                 <label className="font-bold text-c5-charcoal block mb-1 uppercase text-[10px]">
                   Movement Type
@@ -474,16 +544,21 @@ export const StaffView: React.FC<StaffViewProps> = ({
 
             <div className="p-4 bg-c5-cream/40 border-t border-c5-beige flex justify-end gap-3">
               <button
-                onClick={() => setIsCashMovementModalOpen(false)}
+                onClick={() => {
+                  setIsCashMovementModalOpen(false);
+                  setModalError(null);
+                }}
+                disabled={isSubmitting}
                 className="px-4 py-2 rounded-xl text-xs font-semibold text-c5-charcoal hover:bg-c5-beige"
               >
                 Cancel
               </button>
               <button
                 onClick={handleRecordCashMovement}
-                className="px-5 py-2.5 rounded-xl text-xs font-bold bg-c5-espresso text-c5-cream hover:bg-c5-espresso-dark"
+                disabled={isSubmitting}
+                className="px-5 py-2.5 rounded-xl text-xs font-bold bg-c5-espresso text-c5-cream hover:bg-c5-espresso-dark disabled:opacity-50"
               >
-                Save Cash Movement
+                {isSubmitting ? 'Saving Movement...' : 'Save Cash Movement'}
               </button>
             </div>
           </div>
@@ -500,7 +575,10 @@ export const StaffView: React.FC<StaffViewProps> = ({
                 <p className="text-xs text-c5-beige mt-0.5">Barista: {activeShift.userName}</p>
               </div>
               <button
-                onClick={() => setIsCloseShiftModalOpen(false)}
+                onClick={() => {
+                  setIsCloseShiftModalOpen(false);
+                  setModalError(null);
+                }}
                 className="p-1 rounded-lg hover:bg-white/10 text-c5-beige hover:text-white"
               >
                 ✕
@@ -508,9 +586,15 @@ export const StaffView: React.FC<StaffViewProps> = ({
             </div>
 
             <div className="p-6 space-y-4 text-xs">
+              {modalError && (
+                <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-xs text-rose-700 flex items-center gap-2">
+                  <AlertTriangle className="w-4 h-4 shrink-0 text-rose-600" />
+                  <span>{modalError}</span>
+                </div>
+              )}
               <div className="p-3 bg-c5-cream rounded-xl border border-c5-beige flex justify-between items-center">
                 <span className="font-bold text-c5-charcoal-muted">System Expected Cash:</span>
-                <span className="font-mono font-black text-base text-c5-charcoal">
+                <span className="font-mono font-bold text-base text-c5-charcoal">
                   {formatPHP(expectedDrawerCashCents)}
                 </span>
               </div>
@@ -538,7 +622,7 @@ export const StaffView: React.FC<StaffViewProps> = ({
                   }`}
                 >
                   <span className="font-bold">Variance (Over / Short):</span>
-                  <span className="font-mono font-black text-sm">
+                  <span className="font-mono font-bold text-sm">
                     {formatPHP(
                       parsePHPAmountToCents(parseFloat(countedCashInput) || 0) - expectedDrawerCashCents
                     )}
@@ -562,16 +646,21 @@ export const StaffView: React.FC<StaffViewProps> = ({
 
             <div className="p-4 bg-c5-cream/40 border-t border-c5-beige flex justify-end gap-3">
               <button
-                onClick={() => setIsCloseShiftModalOpen(false)}
+                onClick={() => {
+                  setIsCloseShiftModalOpen(false);
+                  setModalError(null);
+                }}
+                disabled={isSubmitting}
                 className="px-4 py-2 rounded-xl text-xs font-semibold text-c5-charcoal hover:bg-c5-beige"
               >
                 Cancel
               </button>
               <button
                 onClick={handleCloseShift}
-                className="px-5 py-2.5 rounded-xl text-xs font-bold bg-rose-700 text-white hover:bg-rose-800"
+                disabled={isSubmitting}
+                className="px-5 py-2.5 rounded-xl text-xs font-bold bg-rose-700 text-white hover:bg-rose-800 disabled:opacity-50"
               >
-                Finalize & Close Shift
+                {isSubmitting ? 'Finalizing...' : 'Finalize & Close Shift'}
               </button>
             </div>
           </div>
@@ -585,7 +674,10 @@ export const StaffView: React.FC<StaffViewProps> = ({
             <div className="bg-c5-espresso text-c5-cream p-5 flex items-center justify-between">
               <h3 className="font-bold text-base">Add Staff Member</h3>
               <button
-                onClick={() => setIsUserModalOpen(false)}
+                onClick={() => {
+                  setIsUserModalOpen(false);
+                  setModalError(null);
+                }}
                 className="p-1 rounded-lg hover:bg-white/10 text-c5-beige hover:text-white"
               >
                 ✕
@@ -593,6 +685,12 @@ export const StaffView: React.FC<StaffViewProps> = ({
             </div>
 
             <div className="p-6 space-y-3 text-xs">
+              {modalError && (
+                <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-xs text-rose-700 flex items-center gap-2">
+                  <AlertTriangle className="w-4 h-4 shrink-0 text-rose-600" />
+                  <span>{modalError}</span>
+                </div>
+              )}
               <div>
                 <label className="font-bold text-c5-charcoal block mb-1 uppercase text-[10px]">
                   Full Name *
@@ -652,16 +750,21 @@ export const StaffView: React.FC<StaffViewProps> = ({
 
             <div className="p-4 bg-c5-cream/40 border-t border-c5-beige flex justify-end gap-3">
               <button
-                onClick={() => setIsUserModalOpen(false)}
+                onClick={() => {
+                  setIsUserModalOpen(false);
+                  setModalError(null);
+                }}
+                disabled={isSubmitting}
                 className="px-4 py-2 rounded-xl text-xs font-semibold text-c5-charcoal hover:bg-c5-beige"
               >
                 Cancel
               </button>
               <button
                 onClick={handleAddUser}
-                className="px-5 py-2.5 rounded-xl text-xs font-bold bg-c5-espresso text-c5-cream hover:bg-c5-espresso-dark"
+                disabled={isSubmitting}
+                className="px-5 py-2.5 rounded-xl text-xs font-bold bg-c5-espresso text-c5-cream hover:bg-c5-espresso-dark disabled:opacity-50"
               >
-                Create Staff Account
+                {isSubmitting ? 'Creating...' : 'Create Staff Account'}
               </button>
             </div>
           </div>

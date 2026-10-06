@@ -2,10 +2,12 @@ import React, { useState } from 'react';
 import {
   Plus,
   Trash2,
-  X
+  X,
+  AlertTriangle
 } from 'lucide-react';
 import { Supplier, Purchase, InventoryItem, PurchaseItem } from '../../types';
-import { db, formatPHP, parsePHPAmountToCents } from '../../services/storage';
+import { formatPHP, parsePHPAmountToCents } from '../../services/storage';
+import { dataService } from '../../services/dataService';
 
 interface PurchasesViewProps {
   suppliers: Supplier[];
@@ -37,25 +39,39 @@ export const PurchasesView: React.FC<PurchasesViewProps> = ({
   const [poStatus, setPoStatus] = useState<'received' | 'pending'>('received');
   const [poItems, setPoItems] = useState<PurchaseItem[]>([]);
 
-  const handleAddSupplier = () => {
+  // Modal Error & Submitting State
+  const [modalError, setModalError] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const handleAddSupplier = async () => {
+    setModalError(null);
     if (!supplierName.trim()) {
-      alert('Please enter supplier company name.');
+      setModalError('Please enter supplier company name.');
       return;
     }
-    db.addSupplier({
-      companyName: supplierName.trim(),
-      contactPerson: supplierContact.trim() || undefined,
-      phone: supplierPhone.trim() || undefined,
-      email: supplierEmail.trim() || undefined,
-      address: supplierAddress.trim() || undefined
-    });
-    setIsSupplierModalOpen(false);
-    setSupplierName('');
-    setSupplierContact('');
-    setSupplierPhone('');
-    setSupplierEmail('');
-    setSupplierAddress('');
-    onRefreshData();
+
+    setIsSubmitting(true);
+    try {
+      await dataService.saveSupplier({
+        companyName: supplierName.trim(),
+        contactPerson: supplierContact.trim() || undefined,
+        phone: supplierPhone.trim() || undefined,
+        email: supplierEmail.trim() || undefined,
+        address: supplierAddress.trim() || undefined
+      });
+
+      setIsSupplierModalOpen(false);
+      setSupplierName('');
+      setSupplierContact('');
+      setSupplierPhone('');
+      setSupplierEmail('');
+      setSupplierAddress('');
+      onRefreshData();
+    } catch (err) {
+      setModalError((err as Error).message);
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const handleAddPoItem = (inventoryItemId: string) => {
@@ -81,8 +97,8 @@ export const PurchasesView: React.FC<PurchasesViewProps> = ({
         if (item.id === id) {
           return {
             ...item,
-            quantity: qty,
-            totalCostCents: Math.round(qty * item.unitCostCents)
+            quantity: Math.max(0, qty),
+            totalCostCents: Math.round(Math.max(0, qty) * item.unitCostCents)
           };
         }
         return item;
@@ -91,7 +107,7 @@ export const PurchasesView: React.FC<PurchasesViewProps> = ({
   };
 
   const handleUpdatePoItemCost = (id: string, costPHP: number) => {
-    const costCents = parsePHPAmountToCents(costPHP);
+    const costCents = parsePHPAmountToCents(Math.max(0, costPHP));
     setPoItems(prev =>
       prev.map(item => {
         if (item.id === id) {
@@ -112,30 +128,38 @@ export const PurchasesView: React.FC<PurchasesViewProps> = ({
 
   const poTotalCents = poItems.reduce((sum, item) => sum + item.totalCostCents, 0);
 
-  const handleSavePurchaseOrder = () => {
-    const supplier = suppliers.find(s => s.id === selectedSupplierId);
+  const handleSavePurchaseOrder = async () => {
+    setModalError(null);
+    const supplier = suppliers.find(s => s.id === selectedSupplierId) || suppliers[0];
     if (!supplier) {
-      alert('Please choose a supplier.');
+      setModalError('Please register and choose a vendor supplier.');
       return;
     }
     if (poItems.length === 0) {
-      alert('Please add at least one stock item to receive.');
+      setModalError('Please add at least one material/ingredient to the purchase order.');
       return;
     }
 
-    db.recordPurchase({
-      supplierId: supplier.id,
-      supplierName: supplier.companyName,
-      invoiceNumber: invoiceNumber.trim() || undefined,
-      status: poStatus,
-      totalAmountCents: poTotalCents,
-      items: poItems
-    });
+    setIsSubmitting(true);
+    try {
+      await dataService.recordPurchase({
+        supplierId: supplier.id,
+        supplierName: supplier.companyName,
+        invoiceNumber: invoiceNumber.trim() || undefined,
+        status: poStatus,
+        totalAmountCents: poTotalCents,
+        items: poItems
+      });
 
-    setIsPurchaseModalOpen(false);
-    setPoItems([]);
-    setInvoiceNumber('');
-    onRefreshData();
+      setIsPurchaseModalOpen(false);
+      setPoItems([]);
+      setInvoiceNumber('');
+      onRefreshData();
+    } catch (err) {
+      setModalError((err as Error).message);
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -309,6 +333,12 @@ export const PurchasesView: React.FC<PurchasesViewProps> = ({
             </div>
 
             <div className="p-5 space-y-3.5 text-xs">
+              {modalError && (
+                <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-xs text-rose-700 flex items-center gap-2">
+                  <AlertTriangle className="w-4 h-4 shrink-0 text-rose-600" />
+                  <span>{modalError}</span>
+                </div>
+              )}
               <div>
                 <label className="text-xs font-medium text-[#292929] block mb-1">
                   Company Name *
@@ -378,16 +408,21 @@ export const PurchasesView: React.FC<PurchasesViewProps> = ({
 
             <div className="p-4 bg-[#FBF9F5] border-t border-[#E8E2D9] flex justify-end gap-2">
               <button
-                onClick={() => setIsSupplierModalOpen(false)}
+                onClick={() => {
+                  setIsSupplierModalOpen(false);
+                  setModalError(null);
+                }}
+                disabled={isSubmitting}
                 className="px-4 py-2 rounded-xl text-xs font-medium text-[#6E6862] hover:bg-[#EFE9DF] cursor-pointer"
               >
                 Cancel
               </button>
               <button
                 onClick={handleAddSupplier}
-                className="px-4 py-2 rounded-xl text-xs font-medium bg-[#3B2925] text-white hover:bg-[#2C1E1A] cursor-pointer shadow-xs"
+                disabled={isSubmitting}
+                className="px-4 py-2 rounded-xl text-xs font-medium bg-[#3B2925] text-white hover:bg-[#2C1E1A] cursor-pointer shadow-xs disabled:opacity-50"
               >
-                Save Vendor
+                {isSubmitting ? 'Saving...' : 'Save Vendor'}
               </button>
             </div>
           </div>
@@ -412,6 +447,12 @@ export const PurchasesView: React.FC<PurchasesViewProps> = ({
             </div>
 
             <div className="p-5 space-y-4 max-h-[70vh] overflow-y-auto text-xs">
+              {modalError && (
+                <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-xs text-rose-700 flex items-center gap-2">
+                  <AlertTriangle className="w-4 h-4 shrink-0 text-rose-600" />
+                  <span>{modalError}</span>
+                </div>
+              )}
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="text-xs font-medium text-[#292929] block mb-1">
@@ -534,16 +575,21 @@ export const PurchasesView: React.FC<PurchasesViewProps> = ({
 
             <div className="p-4 bg-[#FBF9F5] border-t border-[#E8E2D9] flex justify-end gap-2">
               <button
-                onClick={() => setIsPurchaseModalOpen(false)}
+                onClick={() => {
+                  setIsPurchaseModalOpen(false);
+                  setModalError(null);
+                }}
+                disabled={isSubmitting}
                 className="px-4 py-2 rounded-xl text-xs font-medium text-[#6E6862] hover:bg-[#EFE9DF] cursor-pointer"
               >
                 Cancel
               </button>
               <button
                 onClick={handleSavePurchaseOrder}
-                className="px-4 py-2 rounded-xl text-xs font-medium bg-[#3B2925] text-white hover:bg-[#2C1E1A] cursor-pointer shadow-xs"
+                disabled={isSubmitting}
+                className="px-4 py-2 rounded-xl text-xs font-medium bg-[#3B2925] text-white hover:bg-[#2C1E1A] cursor-pointer shadow-xs disabled:opacity-50"
               >
-                Confirm Delivery
+                {isSubmitting ? 'Recording...' : 'Confirm Delivery'}
               </button>
             </div>
           </div>

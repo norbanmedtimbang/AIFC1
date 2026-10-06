@@ -165,7 +165,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4 no-print">
         <div className="bg-white p-5 rounded-2xl border border-c5-beige shadow-xs">
           <span className="text-[10px] uppercase font-bold text-c5-charcoal-muted">Gross Sales</span>
-          <h3 className="text-2xl font-black font-mono text-c5-charcoal mt-1">
+          <h3 className="text-2xl font-bold font-mono text-c5-charcoal mt-1">
             {formatPHP(grossSalesCents)}
           </h3>
           <p className="text-[11px] text-c5-charcoal-muted mt-0.5">Before discounts & refunds</p>
@@ -173,7 +173,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
 
         <div className="bg-white p-5 rounded-2xl border border-c5-beige shadow-xs">
           <span className="text-[10px] uppercase font-bold text-c5-charcoal-muted">Discounts Given</span>
-          <h3 className="text-2xl font-black font-mono text-rose-600 mt-1">
+          <h3 className="text-2xl font-bold font-mono text-rose-600 mt-1">
             -{formatPHP(discountCents)}
           </h3>
           <p className="text-[11px] text-c5-charcoal-muted mt-0.5">Senior, PWD, staff privileges</p>
@@ -181,7 +181,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
 
         <div className="bg-white p-5 rounded-2xl border border-c5-beige shadow-xs">
           <span className="text-[10px] uppercase font-bold text-c5-charcoal-muted">Net Collected</span>
-          <h3 className="text-2xl font-black font-mono text-emerald-700 mt-1">
+          <h3 className="text-2xl font-bold font-mono text-emerald-700 mt-1">
             {formatPHP(netSalesCents)}
           </h3>
           <p className="text-[11px] text-c5-charcoal-muted mt-0.5">
@@ -191,7 +191,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
 
         <div className="bg-white p-5 rounded-2xl border border-c5-beige shadow-xs">
           <span className="text-[10px] uppercase font-bold text-c5-charcoal-muted">Paid Tickets</span>
-          <h3 className="text-2xl font-black font-mono text-c5-charcoal mt-1">
+          <h3 className="text-2xl font-bold font-mono text-c5-charcoal mt-1">
             {relevantSales.filter(s => s.paymentStatus === 'paid').length}
           </h3>
           <p className="text-[11px] text-rose-600 mt-0.5">

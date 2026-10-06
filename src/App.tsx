@@ -15,7 +15,7 @@ import { ReportsView } from './components/reports/ReportsView';
 import { StaffView } from './components/staff/StaffView';
 import { SettingsView } from './components/settings/SettingsView';
 import { PinDialog } from './components/shared/PinDialog';
-import { Lock, Coffee, RefreshCw, AlertTriangle, ShieldCheck } from 'lucide-react';
+import { Lock, Coffee, RefreshCw, AlertTriangle } from 'lucide-react';
 
 export default function App() {
   const [dbState, setDbState] = useState<AppDataState>(() => dataService.getState());
@@ -152,28 +152,27 @@ export default function App() {
   // INITIAL DATABASE SYNCHRONIZATION LOADING SCREEN
   if (isLoading) {
     return (
-      <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#14100E] text-white p-6 select-none">
-        <div className="text-center space-y-6 max-w-md w-full bg-stone-900/90 border border-stone-800 p-8 rounded-3xl shadow-2xl backdrop-blur-md">
-          <div className="relative w-20 h-20 mx-auto flex items-center justify-center">
-            <div className="absolute inset-0 rounded-full border-4 border-stone-800 border-t-[#B4EE10] animate-spin" />
-            <div className="w-14 h-14 rounded-2xl bg-[#B4EE10] text-[#14100E] flex items-center justify-center shadow-[0_0_25px_rgba(180,238,16,0.35)]">
-              <Coffee className="w-7 h-7 stroke-[2.5]" />
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#F7F3EB] p-6 select-none">
+        <div className="text-center space-y-6 max-w-sm w-full bg-white border border-[#E8E2D9] p-8 rounded-2xl shadow-sm">
+          <div className="relative w-16 h-16 mx-auto flex items-center justify-center">
+            <div className="absolute inset-0 rounded-full border-2 border-[#E8E2D9] border-t-[#3B2925] animate-spin" />
+            <div className="w-11 h-11 rounded-xl bg-[#3B2925] text-white flex items-center justify-center">
+              <Coffee className="w-5 h-5 stroke-[1.8]" />
             </div>
           </div>
           <div>
-            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[#B4EE10]/15 text-[#B4EE10] text-[10px] font-black tracking-widest uppercase mb-3">
-              <ShieldCheck className="w-3.5 h-3.5" />
-              C5ISR POS CLOUD ENGINE
-            </div>
-            <h2 className="text-2xl font-black uppercase tracking-wider text-white font-display">
-              Connecting Database
+            <p className="text-[11px] font-medium text-[#7A736C] tracking-wide mb-2">
+              C5ISR Coffee POS
+            </p>
+            <h2 className="text-lg font-semibold text-[#292929]">
+              Connecting…
             </h2>
-            <p className="text-xs text-stone-300 font-medium mt-1 leading-relaxed">
-              Synchronizing live menu, recipes, inventory & shifts from Supabase PostgreSQL...
+            <p className="text-xs text-[#7A736C] mt-1.5 leading-relaxed">
+              Syncing menu, inventory & shifts
             </p>
           </div>
-          <div className="w-full bg-stone-800 h-1.5 rounded-full overflow-hidden">
-            <div className="bg-[#B4EE10] h-full w-2/3 animate-pulse rounded-full" />
+          <div className="w-full bg-[#E8E2D9] h-1 rounded-full overflow-hidden">
+            <div className="bg-[#3B2925] h-full w-2/3 animate-pulse rounded-full" />
           </div>
         </div>
       </div>
@@ -183,28 +182,25 @@ export default function App() {
   // DATABASE CONNECTION UNAVAILABLE ERROR SCREEN
   if (connectionError) {
     return (
-      <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#14100E] text-white p-6 select-none">
-        <div className="text-center space-y-6 max-w-md w-full bg-stone-900 border border-red-900/50 p-8 rounded-3xl shadow-2xl">
-          <div className="w-16 h-16 rounded-3xl bg-red-500/10 border border-red-500/20 text-red-400 flex items-center justify-center mx-auto shadow-[0_0_25px_rgba(239,68,68,0.25)]">
-            <AlertTriangle className="w-8 h-8 stroke-[2.5]" />
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#F7F3EB] p-6 select-none">
+        <div className="text-center space-y-5 max-w-sm w-full bg-white border border-[#E8E2D9] p-8 rounded-2xl shadow-sm">
+          <div className="w-14 h-14 rounded-2xl bg-[#F7F3EB] border border-[#E8E2D9] text-[#A25035] flex items-center justify-center mx-auto">
+            <AlertTriangle className="w-6 h-6 stroke-[1.8]" />
           </div>
           <div>
-            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-red-500/10 text-red-400 text-[10px] font-black tracking-widest uppercase mb-3">
-              DATABASE UNREACHABLE
-            </div>
-            <h2 className="text-2xl font-black uppercase tracking-wider text-white font-display">
-              Database Offline
+            <h2 className="text-lg font-semibold text-[#292929]">
+              Database offline
             </h2>
-            <p className="text-xs text-stone-300 font-medium mt-2 leading-relaxed">
+            <p className="text-xs text-[#7A736C] mt-2 leading-relaxed">
               {connectionError}
             </p>
           </div>
           <button
             onClick={loadInitialData}
-            className="w-full py-4 rounded-2xl bg-[#B4EE10] hover:bg-[#CCFF00] text-[#14100E] font-black text-xs uppercase tracking-wider shadow-lg transition-all active:scale-95 cursor-pointer flex items-center justify-center gap-2"
+            className="w-full py-2.5 rounded-xl bg-[#3B2925] hover:bg-[#2C1E1A] text-white text-xs font-medium transition cursor-pointer flex items-center justify-center gap-2"
           >
-            <RefreshCw className="w-4 h-4" />
-            Retry Connection
+            <RefreshCw className="w-3.5 h-3.5" />
+            Retry connection
           </button>
         </div>
       </div>
@@ -214,24 +210,24 @@ export default function App() {
   // FULLSCREEN TERMINAL LOCKED SCREEN
   if (isLocked) {
     return (
-      <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#14100E] text-white p-4 select-none">
-        <div className="text-center space-y-5 max-w-sm w-full bg-stone-900 border border-stone-800 p-8 rounded-3xl shadow-2xl">
-          <div className="w-16 h-16 rounded-3xl bg-[#B4EE10] text-[#14100E] flex items-center justify-center mx-auto shadow-[0_0_25px_rgba(180,238,16,0.35)]">
-            <Lock className="w-8 h-8 stroke-[2.5]" />
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#F7F3EB] p-4 select-none">
+        <div className="text-center space-y-5 max-w-sm w-full bg-white border border-[#E8E2D9] p-8 rounded-2xl shadow-sm">
+          <div className="w-14 h-14 rounded-2xl bg-[#3B2925] text-white flex items-center justify-center mx-auto">
+            <Lock className="w-6 h-6 stroke-[1.8]" />
           </div>
           <div>
-            <h2 className="text-2xl font-black uppercase tracking-wider text-white font-display">
-              C5ISR TERMINAL LOCKED
+            <h2 className="text-lg font-semibold text-[#292929]">
+              Terminal locked
             </h2>
-            <p className="text-xs text-stone-300 font-medium mt-1">
-              Terminal is paused. Click below to enter your 4-digit staff PIN.
+            <p className="text-xs text-[#7A736C] mt-1.5">
+              Enter your staff PIN to unlock the register.
             </p>
           </div>
           <button
             onClick={() => setIsLocked(false)}
-            className="w-full py-4 rounded-2xl bg-[#B4EE10] hover:bg-[#CCFF00] text-[#14100E] font-black text-xs uppercase tracking-wider shadow-lg transition-all active:scale-95 cursor-pointer"
+            className="w-full py-2.5 rounded-xl bg-[#3B2925] hover:bg-[#2C1E1A] text-white text-xs font-medium transition cursor-pointer"
           >
-            Enter PIN to Unlock
+            Enter PIN
           </button>
         </div>
       </div>

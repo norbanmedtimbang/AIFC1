@@ -1067,6 +1067,196 @@ class DataService {
   }
 
   /**
+   * Saves or updates a staff user account in Supabase
+   */
+  public async saveUser(user: {
+    id?: string;
+    username: string;
+    fullName: string;
+    role: 'admin' | 'manager' | 'cashier';
+    pinHash: string;
+    status?: 'active' | 'inactive';
+  }): Promise<User> {
+    if (!isSupabaseConfigured() || !supabase) {
+      throw new Error('Supabase client is not configured.');
+    }
+
+    const cleanUsername = user.username.toLowerCase().trim();
+    if (!cleanUsername) throw new Error('Username is required.');
+    if (!user.fullName.trim()) throw new Error('Full name is required.');
+    if (!user.pinHash || user.pinHash.length !== 4 || isNaN(Number(user.pinHash))) {
+      throw new Error('PIN must be exactly 4 digits.');
+    }
+
+    const userId = user.id || 'usr-' + Date.now() + '-' + Math.random().toString(36).substr(2, 4);
+    const now = new Date().toISOString();
+
+    const { error } = await supabase.from('users').upsert({
+      id: userId,
+      username: cleanUsername,
+      full_name: user.fullName.trim(),
+      role: user.role,
+      pin_hash: user.pinHash,
+      status: user.status || 'active',
+      created_at: now,
+      updated_at: now
+    });
+
+    if (error) {
+      if (error.message.includes('unique') || error.message.includes('duplicate')) {
+        throw new Error(`Username "@${cleanUsername}" is already taken. Please choose another.`);
+      }
+      throw new Error(`Failed to save user account: ${error.message}`);
+    }
+
+    await this.loadAllData();
+    const saved = this.state.users.find(u => u.id === userId);
+    return (
+      saved || {
+        id: userId,
+        username: cleanUsername,
+        fullName: user.fullName.trim(),
+        role: user.role,
+        pinHash: user.pinHash,
+        status: user.status || 'active',
+        createdAt: now
+      }
+    );
+  }
+
+  /**
+   * Deletes or deactivates a user account in Supabase
+   */
+  public async deleteUser(userId: string): Promise<void> {
+    if (!isSupabaseConfigured() || !supabase) {
+      throw new Error('Supabase client is not configured.');
+    }
+
+    if (this.state.currentUserId === userId) {
+      throw new Error('You cannot delete your own active session account.');
+    }
+
+    const activeAdmins = this.state.users.filter(u => u.role === 'admin' && u.status === 'active');
+    const targetUser = this.state.users.find(u => u.id === userId);
+    if (targetUser?.role === 'admin' && activeAdmins.length <= 1) {
+      throw new Error('Cannot delete the last remaining administrator account.');
+    }
+
+    const { error } = await supabase.from('users').delete().eq('id', userId);
+    if (error) {
+      throw new Error(`Failed to delete user: ${error.message}`);
+    }
+
+    await this.loadAllData();
+  }
+
+  /**
+   * Saves or updates a supplier vendor
+   */
+  public async saveSupplier(supplier: Omit<Supplier, 'id'> & { id?: string }): Promise<Supplier> {
+    if (!supplier.companyName.trim()) {
+      throw new Error('Supplier company name is required.');
+    }
+
+    const id = supplier.id || 'sup-' + Date.now();
+    const fullSupplier: Supplier = {
+      ...supplier,
+      id,
+      companyName: supplier.companyName.trim()
+    };
+
+    // Update in-memory state and sync to db
+    const existingIdx = this.state.suppliers.findIndex(s => s.id === id);
+    if (existingIdx !== -1) {
+      this.state.suppliers[existingIdx] = fullSupplier;
+    } else {
+      this.state.suppliers.push(fullSupplier);
+    }
+
+    // Try persisting to Supabase if table exists
+    if (isSupabaseConfigured() && supabase) {
+      try {
+        await supabase.from('suppliers').upsert({
+          id,
+          company_name: fullSupplier.companyName,
+          contact_person: fullSupplier.contactPerson || null,
+          phone: fullSupplier.phone || null,
+          email: fullSupplier.email || null,
+          address: fullSupplier.address || null
+        });
+      } catch (e) {
+        console.warn('Notice: suppliers cloud table upsert skipped:', e);
+      }
+    }
+
+    this.notify();
+    return fullSupplier;
+  }
+
+  /**
+   * Records a purchase order delivery and restocks inventory in Supabase
+   */
+  public async recordPurchase(purchase: Omit<Purchase, 'id' | 'purchasedAt'>): Promise<Purchase> {
+    if (!purchase.supplierId) {
+      throw new Error('Supplier is required for purchase order.');
+    }
+    if (!purchase.items || purchase.items.length === 0) {
+      throw new Error('Purchase order must contain at least one item.');
+    }
+
+    const id = 'po-' + Date.now();
+    const now = new Date().toISOString();
+    const currentUser = this.getCurrentUser();
+
+    const newPurchase: Purchase = {
+      ...purchase,
+      id,
+      purchasedAt: now,
+      receivedAt: purchase.status === 'received' ? now : undefined
+    };
+
+    this.state.purchases.unshift(newPurchase);
+
+    // If marked received, immediately update inventory stock and movements in Supabase
+    if (newPurchase.status === 'received' && isSupabaseConfigured() && supabase) {
+      for (const item of newPurchase.items) {
+        const invItem = this.state.inventoryItems.find(i => i.id === item.inventoryItemId);
+        if (invItem) {
+          const updatedStock = invItem.currentStock + item.quantity;
+          invItem.currentStock = updatedStock;
+          invItem.updatedAt = now;
+
+          // Update stock in Supabase
+          await supabase
+            .from('inventory_items')
+            .update({
+              current_stock: updatedStock,
+              cost_per_unit_cents: item.unitCostCents,
+              updated_at: now
+            })
+            .eq('id', invItem.id);
+
+          // Log movement in Supabase
+          await supabase.from('inventory_movements').insert({
+            id: 'mov-po-' + Date.now() + '-' + Math.random().toString(36).substr(2, 4),
+            inventory_item_id: invItem.id,
+            type: 'purchase',
+            quantity_delta: item.quantity,
+            balance_after: updatedStock,
+            reference_id: id,
+            notes: `Restocked via PO #${newPurchase.invoiceNumber || id} from ${newPurchase.supplierName}`,
+            created_by: currentUser.fullName,
+            created_at: now
+          });
+        }
+      }
+    }
+
+    this.notify();
+    return newPurchase;
+  }
+
+  /**
    * Listens to Realtime changes across connected devices
    */
   public subscribeToRealtime(): () => void {

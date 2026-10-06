@@ -10,8 +10,7 @@ import {
   BarChart3,
   Users,
   Settings,
-  Lock,
-  UserCheck
+  Lock
 } from 'lucide-react';
 import { User, CashierShift } from '../../types';
 
@@ -60,28 +59,33 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
   return (
     <aside className="w-56 bg-[#FBF9F5] text-[#292929] flex flex-col h-screen shrink-0 border-r border-[#E8E2D9] select-none">
-      {/* Brand Header */}
-      <div className="px-5 py-6 border-b border-[#E8E2D9]">
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-base font-bold tracking-tight text-[#3B2925] leading-none">
-              C5ISR
-            </h1>
-            <p className="text-xs text-[#7A736C] font-medium mt-1">
+      {/* Brand */}
+      <div className="px-5 py-5 border-b border-[#E8E2D9]">
+        <div className="flex items-center gap-3">
+          <div className="w-9 h-9 rounded-xl bg-[#3B2925] text-white flex items-center justify-center shadow-[0_2px_8px_rgba(59,41,37,0.2)]">
+            <Coffee className="w-4.5 h-4.5" strokeWidth={1.8} />
+          </div>
+          <div className="min-w-0">
+            <div className="flex items-center gap-2">
+              <h1 className="text-[15px] font-bold tracking-tight text-[#3B2925] leading-none">
+                C5ISR
+              </h1>
+              {activeShift && (
+                <span
+                  title="Shift open"
+                  className="inline-block w-1.5 h-1.5 rounded-full bg-[#A8B5A0] ring-2 ring-[#A8B5A0]/25"
+                />
+              )}
+            </div>
+            <p className="text-[11px] text-[#9B948C] font-medium mt-1 tracking-wide">
               Coffee POS
             </p>
           </div>
-          {activeShift && (
-            <span
-              title="Shift Open"
-              className="inline-block w-2 h-2 rounded-full bg-[#A8B5A0]"
-            />
-          )}
         </div>
       </div>
 
-      {/* Main Navigation */}
-      <nav className="flex-1 overflow-y-auto px-3 py-4 space-y-1">
+      {/* Navigation */}
+      <nav className="flex-1 overflow-y-auto px-2.5 py-3 space-y-0.5">
         {primaryNav.map(item => {
           const Icon = item.icon;
           const isActive = currentModule === item.id;
@@ -89,27 +93,27 @@ export const Sidebar: React.FC<SidebarProps> = ({
             <button
               key={item.id}
               onClick={() => onSelectModule(item.id)}
-              className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-medium transition-colors cursor-pointer ${
+              className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-[12.5px] font-medium transition-all duration-150 cursor-pointer ${
                 isActive
-                  ? 'bg-[#3B2925] text-white shadow-xs'
-                  : 'text-[#6E6862] hover:bg-[#EFE9DF] hover:text-[#292929]'
+                  ? 'bg-[#3B2925] text-white shadow-[0_2px_8px_rgba(59,41,37,0.18)]'
+                  : 'text-[#6E6862] hover:bg-[#EFE9DF]/80 hover:text-[#292929]'
               }`}
             >
               <div className="flex items-center gap-2.5">
                 <Icon
-                  className={`w-4 h-4 shrink-0 ${
-                    isActive ? 'text-white' : 'text-[#8E867E]'
+                  className={`w-[15px] h-[15px] shrink-0 ${
+                    isActive ? 'text-white' : 'text-[#9B948C]'
                   }`}
-                  strokeWidth={isActive ? 2.2 : 1.8}
+                  strokeWidth={isActive ? 2.1 : 1.75}
                 />
-                <span>{item.label}</span>
+                <span className="tracking-tight">{item.label}</span>
               </div>
               {item.badge !== undefined && item.badge > 0 && (
                 <span
-                  className={`text-[10px] px-1.5 py-0.2 rounded-md font-mono ${
+                  className={`text-[10px] min-w-[1.25rem] h-5 px-1.5 rounded-full font-mono font-medium flex items-center justify-center tabular-nums ${
                     isActive
                       ? 'bg-white/20 text-white'
-                      : 'bg-[#E8DFD2] text-[#3B2925]'
+                      : 'bg-[#F0D9D2] text-[#A25035]'
                   }`}
                 >
                   {item.badge}
@@ -119,55 +123,53 @@ export const Sidebar: React.FC<SidebarProps> = ({
           );
         })}
 
-        {/* Divider */}
-        <div className="pt-2 pb-1">
+        <div className="py-2.5 px-1">
           <div className="h-px bg-[#E8E2D9]" />
         </div>
 
-        {/* Settings item */}
         <button
           onClick={() => onSelectModule('settings')}
-          className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-medium transition-colors cursor-pointer ${
+          className={`w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-[12.5px] font-medium transition-all duration-150 cursor-pointer ${
             currentModule === 'settings'
-              ? 'bg-[#3B2925] text-white shadow-xs'
-              : 'text-[#6E6862] hover:bg-[#EFE9DF] hover:text-[#292929]'
+              ? 'bg-[#3B2925] text-white shadow-[0_2px_8px_rgba(59,41,37,0.18)]'
+              : 'text-[#6E6862] hover:bg-[#EFE9DF]/80 hover:text-[#292929]'
           }`}
         >
           <Settings
-            className={`w-4 h-4 shrink-0 ${
-              currentModule === 'settings' ? 'text-white' : 'text-[#8E867E]'
+            className={`w-[15px] h-[15px] shrink-0 ${
+              currentModule === 'settings' ? 'text-white' : 'text-[#9B948C]'
             }`}
-            strokeWidth={currentModule === 'settings' ? 2.2 : 1.8}
+            strokeWidth={currentModule === 'settings' ? 2.1 : 1.75}
           />
-          <span>Settings</span>
+          <span className="tracking-tight">Settings</span>
         </button>
       </nav>
 
-      {/* User & Terminal Footer */}
-      <div className="p-3 border-t border-[#E8E2D9] bg-[#F7F3EB]">
-        <div className="flex items-center justify-between px-2 py-1.5">
+      {/* User footer */}
+      <div className="p-2.5 border-t border-[#E8E2D9] bg-[#F7F3EB]/60">
+        <div className="flex items-center gap-1 rounded-xl p-1.5 hover:bg-[#EFE9DF]/60 transition">
           <button
             onClick={onSwitchUser}
-            className="flex items-center gap-2 text-left cursor-pointer group hover:opacity-80 transition"
+            className="flex-1 flex items-center gap-2.5 text-left cursor-pointer min-w-0"
           >
-            <div className="w-7 h-7 rounded-lg bg-[#E8DFD2] text-[#3B2925] flex items-center justify-center text-xs font-bold shrink-0">
-              {currentUser.fullName.charAt(0)}
+            <div className="w-8 h-8 rounded-xl bg-[#3B2925] text-white flex items-center justify-center text-[11px] font-semibold shrink-0 shadow-[0_1px_3px_rgba(59,41,37,0.15)]">
+              {currentUser.fullName.charAt(0).toUpperCase()}
             </div>
-            <div className="truncate">
-              <div className="text-xs font-medium text-[#292929] truncate">
+            <div className="truncate min-w-0">
+              <div className="text-[12px] font-semibold text-[#292929] truncate tracking-tight">
                 {currentUser.fullName}
               </div>
-              <div className="text-[10px] text-[#7A736C] capitalize leading-tight">
+              <div className="text-[10px] text-[#9B948C] capitalize leading-tight">
                 {currentUser.role}
               </div>
             </div>
           </button>
           <button
             onClick={onLockTerminal}
-            title="Lock Register"
-            className="p-1.5 text-[#8E867E] hover:text-[#3B2925] rounded-lg hover:bg-[#E8DFD2] transition cursor-pointer"
+            title="Lock register"
+            className="p-2 text-[#9B948C] hover:text-[#3B2925] rounded-lg hover:bg-white transition cursor-pointer shrink-0"
           >
-            <Lock className="w-3.5 h-3.5" />
+            <Lock className="w-3.5 h-3.5" strokeWidth={1.8} />
           </button>
         </div>
       </div>

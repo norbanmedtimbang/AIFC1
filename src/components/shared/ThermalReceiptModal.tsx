@@ -33,27 +33,27 @@ export const ThermalReceiptModal: React.FC<ThermalReceiptModalProps> = ({
   });
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4 overflow-y-auto">
-      <div className="w-full max-w-md bg-white rounded-3xl shadow-2xl border border-stone-200 overflow-hidden my-6">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4 overflow-y-auto animate-backdrop">
+      <div className="w-full max-w-md bg-white rounded-3xl shadow-2xl border border-stone-200 overflow-hidden my-6 animate-in">
         {/* Modal Toolbar */}
-        <div className="bg-[#14100E] text-white px-5 py-4 flex items-center justify-between no-print">
+        <div className="bg-[#F7F3EB] border-b border-[#E8E2D9] px-5 py-3.5 flex items-center justify-between no-print">
           <div className="flex items-center gap-2.5">
-            <CheckCircle2 className="w-5 h-5 text-[#B4EE10]" />
-            <span className="font-display font-black text-sm tracking-tight uppercase">
+            <CheckCircle2 className="w-4.5 h-4.5 text-[#A8B5A0]" />
+            <span className="text-sm font-semibold text-[#292929]">
               Receipt — {sale.orderNumber}
             </span>
           </div>
           <div className="flex items-center gap-2">
             <button
               onClick={handlePrint}
-              className="flex items-center gap-1.5 px-3.5 py-1.5 bg-[#B4EE10] hover:bg-[#CCFF00] text-[#14100E] text-xs font-black uppercase tracking-wider rounded-xl transition cursor-pointer"
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-[#3B2925] hover:bg-[#2C1E1A] text-white text-xs font-medium rounded-lg transition cursor-pointer"
             >
               <Printer className="w-3.5 h-3.5" />
-              <span>Print (80mm)</span>
+              <span>Print</span>
             </button>
             <button
               onClick={onClose}
-              className="p-1.5 text-stone-300 hover:text-white hover:bg-white/10 rounded-xl transition cursor-pointer"
+              className="p-1.5 text-[#9B948C] hover:text-[#292929] hover:bg-[#E8E2D9] rounded-lg transition cursor-pointer"
             >
               <X className="w-4 h-4" />
             </button>
@@ -212,18 +212,18 @@ export const ThermalReceiptModal: React.FC<ThermalReceiptModalProps> = ({
         </div>
 
         {/* Modal Action Footer */}
-        <div className="bg-white p-4 border-t border-stone-200 flex justify-end gap-3 no-print">
+        <div className="bg-white p-4 border-t border-[#E8E2D9] flex justify-end gap-2 no-print">
           <button
             onClick={onClose}
-            className="px-5 py-2.5 rounded-2xl text-xs font-bold text-stone-700 hover:bg-stone-100 transition border border-stone-200 cursor-pointer"
+            className="px-4 py-2 rounded-xl text-xs font-medium text-[#6E6862] hover:bg-[#F7F3EB] transition border border-[#E8E2D9] cursor-pointer"
           >
             Close
           </button>
           <button
             onClick={handlePrint}
-            className="px-6 py-2.5 rounded-2xl text-xs font-black text-[#14100E] bg-[#B4EE10] hover:bg-[#CCFF00] transition flex items-center gap-2 shadow-sm cursor-pointer"
+            className="px-4 py-2 rounded-xl text-xs font-medium text-white bg-[#3B2925] hover:bg-[#2C1E1A] transition flex items-center gap-1.5 cursor-pointer"
           >
-            <Printer className="w-4 h-4" />
+            <Printer className="w-3.5 h-3.5" />
             <span>Print Receipt</span>
           </button>
         </div>

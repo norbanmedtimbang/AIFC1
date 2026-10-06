@@ -2,8 +2,8 @@
 
 @theme {
   --font-sans: "Inter", "Plus Jakarta Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-  --font-display: "Inter", -apple-system, BlinkMacSystemFont, sans-serif;
-  --font-mono: "JetBrains Mono", monospace;
+  --font-display: "Inter", "Plus Jakarta Sans", -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, monospace;
 
   /* C5ISR Refined Coffee Shop Design System */
   --color-c5-espresso: #3B2925;
@@ -26,6 +26,12 @@
   --color-beige: #E8E2D9;
   --color-sage: #A8B5A0;
   --color-charcoal: #292929;
+
+  /* Radius tokens */
+  --radius-btn: 12px;
+  --radius-input: 12px;
+  --radius-card: 16px;
+  --radius-modal: 18px;
 }
 
 @layer base {
@@ -72,4 +78,156 @@
 }
 ::-webkit-scrollbar-thumb:hover {
   background: #C4B9AA;
+}
+
+/* ─── Motion tokens (fast, subtle — POS must feel snappy) ─── */
+:root {
+  --c5-ease: cubic-bezier(0.22, 1, 0.36, 1);
+  --c5-ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --c5-dur-fast: 120ms;
+  --c5-dur: 180ms;
+  --c5-dur-med: 240ms;
+}
+
+/* Backdrop fade */
+@keyframes c5-backdrop-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+/* Modal / panel rise */
+@keyframes c5-fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(10px) scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+/* Soft scale pop (selection feedback) */
+@keyframes c5-pop {
+  0% { transform: scale(1); }
+  40% { transform: scale(0.96); }
+  100% { transform: scale(1); }
+}
+
+/* Cart line enter */
+@keyframes c5-slide-in-right {
+  from {
+    opacity: 0;
+    transform: translateX(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+/* Staggered grid item */
+@keyframes c5-fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Toast / flash */
+@keyframes c5-toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.animate-backdrop {
+  animation: c5-backdrop-in var(--c5-dur) var(--c5-ease-out) both;
+}
+
+.animate-in {
+  animation: c5-fade-up var(--c5-dur-med) var(--c5-ease-out) both;
+}
+
+.animate-pop {
+  animation: c5-pop var(--c5-dur) var(--c5-ease) both;
+}
+
+.animate-cart-item {
+  animation: c5-slide-in-right var(--c5-dur) var(--c5-ease-out) both;
+}
+
+.animate-fade-in {
+  animation: c5-fade-in var(--c5-dur-med) var(--c5-ease-out) both;
+}
+
+.animate-toast {
+  animation: c5-toast-in var(--c5-dur-med) var(--c5-ease-out) both;
+}
+
+/* Stagger helpers for product grid (max ~12 items) */
+.stagger-1 { animation-delay: 20ms; }
+.stagger-2 { animation-delay: 40ms; }
+.stagger-3 { animation-delay: 60ms; }
+.stagger-4 { animation-delay: 80ms; }
+.stagger-5 { animation-delay: 100ms; }
+.stagger-6 { animation-delay: 120ms; }
+.stagger-7 { animation-delay: 140ms; }
+.stagger-8 { animation-delay: 160ms; }
+.stagger-9 { animation-delay: 180ms; }
+.stagger-10 { animation-delay: 200ms; }
+.stagger-11 { animation-delay: 220ms; }
+.stagger-12 { animation-delay: 240ms; }
+
+/* Interactive defaults */
+.transition-c5 {
+  transition-property: color, background-color, border-color, box-shadow, opacity, transform;
+  transition-duration: var(--c5-dur);
+  transition-timing-function: var(--c5-ease);
+}
+
+.transition-c5-fast {
+  transition-property: color, background-color, border-color, box-shadow, opacity, transform;
+  transition-duration: var(--c5-dur-fast);
+  transition-timing-function: var(--c5-ease);
+}
+
+/* Press feedback utility */
+.pressable:active {
+  transform: scale(0.97);
+}
+
+/* Respect reduced motion */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+  .animate-backdrop,
+  .animate-in,
+  .animate-pop,
+  .animate-cart-item,
+  .animate-fade-in,
+  .animate-toast {
+    animation: none !important;
+  }
+}
+
+.line-clamp-2 {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }
