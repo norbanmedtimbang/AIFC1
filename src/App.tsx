@@ -15,11 +15,15 @@ import { ReportsView } from './components/reports/ReportsView';
 import { StaffView } from './components/staff/StaffView';
 import { SettingsView } from './components/settings/SettingsView';
 import { PinDialog } from './components/shared/PinDialog';
+import { PinLoginView } from './components/auth/PinLoginView';
+import { AccessDeniedView } from './components/shared/AccessDeniedView';
+import { hasModuleAccess, getDefaultModuleForRole } from './services/rbac';
 import { Lock, Coffee, RefreshCw, AlertTriangle } from 'lucide-react';
 
 export default function App() {
   const [dbState, setDbState] = useState<AppDataState>(() => dataService.getState());
   const [isLoading, setIsLoading] = useState(true);
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [connectionError, setConnectionError] = useState<string | null>(null);
   const [currentModule, setCurrentModule] = useState<NavModule>('pos');
   const [isLocked, setIsLocked] = useState(false);
@@ -41,11 +45,9 @@ export default function App() {
       setDbState(liveData);
       setIsLoading(false);
     } catch (err) {
-      console.error('Failed to connect to Supabase PostgreSQL:', err);
-      setConnectionError(
-        (err as Error).message ||
-          'Database connection unavailable. Please check your network and Supabase configuration.'
-      );
+      console.warn('Network or database connection issue, smoothly using offline register cache:', err);
+      const offlineData = dataService.loadOfflineData();
+      setDbState(offlineData);
       setIsLoading(false);
     }
   }, []);
@@ -73,18 +75,33 @@ export default function App() {
     (i: InventoryItem) => i.currentStock <= i.minThreshold
   ).length;
 
-  const handleUnlockSuccess = (user: User) => {
+  const handleLoginSuccess = (user: User) => {
     dataService.setCurrentUserId(user.id);
     db.setCurrentUserId(user.id);
+    setIsAuthenticated(true);
     setIsLocked(false);
+    setIsSwitchUserOpen(false);
+    // Automatic Role Detection: Route to authorized landing module
+    const defaultMod = getDefaultModuleForRole(user.role);
+    setCurrentModule(defaultMod);
     refreshData();
   };
 
+  const handleUnlockSuccess = (user: User) => {
+    handleLoginSuccess(user);
+  };
+
   const handleSwitchUserSuccess = (user: User) => {
-    dataService.setCurrentUserId(user.id);
-    db.setCurrentUserId(user.id);
-    setIsSwitchUserOpen(false);
-    refreshData();
+    handleLoginSuccess(user);
+  };
+
+  const handleLogout = () => {
+    setIsAuthenticated(false);
+    setIsLocked(false);
+  };
+
+  const handleLockTerminal = () => {
+    setIsLocked(true);
   };
 
   // Module Titles and Subtitles
@@ -122,7 +139,7 @@ export default function App() {
       subtitle: 'Official POS X-Reading, Z-Reading, hourly velocity, and payment distribution'
     },
     staff: {
-      title: 'Staff & Shifts',
+      title: currentUser.role === 'cashier' ? 'Cashier Shifts' : 'Staff & Shifts',
       subtitle: 'Opening cash floats, cash drawer drops, shift reconciliation, and staff PINs'
     },
     settings: {
@@ -134,20 +151,21 @@ export default function App() {
   // Keyboard Shortcuts for Cashier Terminal
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'F1') {
+      if (!isAuthenticated || isLocked) return;
+      if (e.key === 'F1' && hasModuleAccess(currentUser.role, 'pos')) {
         e.preventDefault();
         setCurrentModule('pos');
-      } else if (e.key === 'F2') {
+      } else if (e.key === 'F2' && hasModuleAccess(currentUser.role, 'dashboard')) {
         e.preventDefault();
         setCurrentModule('dashboard');
-      } else if (e.key === 'F3') {
+      } else if (e.key === 'F3' && hasModuleAccess(currentUser.role, 'inventory')) {
         e.preventDefault();
         setCurrentModule('inventory');
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, []);
+  }, [currentUser.role, isAuthenticated, isLocked]);
 
   // INITIAL DATABASE SYNCHRONIZATION LOADING SCREEN
   if (isLoading) {
@@ -207,44 +225,29 @@ export default function App() {
     );
   }
 
-  // FULLSCREEN TERMINAL LOCKED SCREEN
-  if (isLocked) {
+  // POS-STYLE PIN LOGIN & AUTOMATIC ROLE DETECTION SCREEN
+  if (!isAuthenticated || isLocked) {
     return (
-      <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#F7F3EB] p-4 select-none">
-        <div className="text-center space-y-5 max-w-sm w-full bg-white border border-[#E8E2D9] p-8 rounded-2xl shadow-sm">
-          <div className="w-14 h-14 rounded-2xl bg-[#3B2925] text-white flex items-center justify-center mx-auto">
-            <Lock className="w-6 h-6 stroke-[1.8]" />
-          </div>
-          <div>
-            <h2 className="text-lg font-semibold text-[#292929]">
-              Terminal locked
-            </h2>
-            <p className="text-xs text-[#7A736C] mt-1.5">
-              Enter your staff PIN to unlock the register.
-            </p>
-          </div>
-          <button
-            onClick={() => setIsLocked(false)}
-            className="w-full py-2.5 rounded-xl bg-[#3B2925] hover:bg-[#2C1E1A] text-white text-xs font-medium transition cursor-pointer"
-          >
-            Enter PIN
-          </button>
-        </div>
-      </div>
+      <PinLoginView
+        users={dbState.users}
+        onLoginSuccess={handleLoginSuccess}
+        shopName={dbState.settings.storeName}
+        tagline={dbState.settings.tagline}
+      />
     );
   }
 
   return (
     <div className="flex h-screen w-screen overflow-hidden bg-c5-cream select-none text-c5-charcoal">
-      {/* 10-MODULE SIDEBAR */}
+      {/* 10-MODULE SIDEBAR WITH AUTOMATIC RBAC */}
       <Sidebar
         currentModule={currentModule}
         onSelectModule={setCurrentModule}
         currentUser={currentUser}
         activeShift={activeShift}
         lowStockCount={lowStockCount}
-        onSwitchUser={() => setIsSwitchUserOpen(true)}
-        onLockTerminal={() => setIsLocked(true)}
+        onSwitchUser={handleLogout}
+        onLockTerminal={handleLockTerminal}
       />
 
       {/* MAIN VIEWPORT */}
@@ -257,113 +260,124 @@ export default function App() {
           activeShift={activeShift}
           settings={dbState.settings}
           onOpenShiftModal={() => setCurrentModule('staff')}
-          onSwitchUser={() => setIsSwitchUserOpen(true)}
+          onSwitchUser={handleLogout}
         />
 
-        {/* ACTIVE MODULE CONTAINER */}
+        {/* ACTIVE MODULE CONTAINER WITH DIRECT ACCESS BLOCKING */}
         <main className="flex-1 overflow-hidden bg-c5-cream">
-          {currentModule === 'pos' && (
-            <POSView
-              products={dbState.products}
-              categories={dbState.categories}
-              modifierGroups={dbState.modifierGroups}
-              settings={dbState.settings}
+          {!hasModuleAccess(currentUser.role, currentModule) ? (
+            <AccessDeniedView
+              currentModule={currentModule}
               currentUser={currentUser}
-              activeShift={activeShift}
-              onRefreshData={refreshData}
-              onOpenShiftModal={() => setCurrentModule('staff')}
+              onNavigateBack={() => setCurrentModule(getDefaultModuleForRole(currentUser.role))}
             />
-          )}
+          ) : (
+            <>
+              {currentModule === 'pos' && (
+                <POSView
+                  products={dbState.products}
+                  categories={dbState.categories}
+                  modifierGroups={dbState.modifierGroups}
+                  settings={dbState.settings}
+                  currentUser={currentUser}
+                  activeShift={activeShift}
+                  onRefreshData={refreshData}
+                  onOpenShiftModal={() => setCurrentModule('staff')}
+                />
+              )}
 
-          {currentModule === 'dashboard' && (
-            <DashboardView
-              sales={dbState.sales}
-              inventoryItems={dbState.inventoryItems}
-              activeShift={activeShift}
-              onNavigateToPOS={() => setCurrentModule('pos')}
-              onNavigateToInventory={() => setCurrentModule('inventory')}
-              onNavigateToStaff={() => setCurrentModule('staff')}
-              onNavigateToMenu={() => setCurrentModule('menu')}
-            />
-          )}
+              {currentModule === 'dashboard' && (
+                <DashboardView
+                  sales={dbState.sales}
+                  inventoryItems={dbState.inventoryItems}
+                  activeShift={activeShift}
+                  onNavigateToPOS={() => setCurrentModule('pos')}
+                  onNavigateToInventory={() => setCurrentModule('inventory')}
+                  onNavigateToStaff={() => setCurrentModule('staff')}
+                  onNavigateToMenu={() => setCurrentModule('menu')}
+                />
+              )}
 
-          {currentModule === 'menu' && (
-            <MenuManagementView
-              products={dbState.products}
-              categories={dbState.categories}
-              modifierGroups={dbState.modifierGroups}
-              inventoryItems={dbState.inventoryItems}
-              onRefreshData={refreshData}
-            />
-          )}
+              {currentModule === 'menu' && (
+                <MenuManagementView
+                  products={dbState.products}
+                  categories={dbState.categories}
+                  modifierGroups={dbState.modifierGroups}
+                  inventoryItems={dbState.inventoryItems}
+                  onRefreshData={refreshData}
+                />
+              )}
 
-          {currentModule === 'inventory' && (
-            <InventoryView
-              inventoryItems={dbState.inventoryItems}
-              inventoryMovements={dbState.inventoryMovements}
-              onRefreshData={refreshData}
-            />
-          )}
+              {currentModule === 'inventory' && (
+                <InventoryView
+                  inventoryItems={dbState.inventoryItems}
+                  inventoryMovements={dbState.inventoryMovements}
+                  onRefreshData={refreshData}
+                />
+              )}
 
-          {currentModule === 'purchases' && (
-            <PurchasesView
-              suppliers={dbState.suppliers}
-              purchases={dbState.purchases}
-              inventoryItems={dbState.inventoryItems}
-              onRefreshData={refreshData}
-            />
-          )}
+              {currentModule === 'purchases' && (
+                <PurchasesView
+                  suppliers={dbState.suppliers}
+                  purchases={dbState.purchases}
+                  inventoryItems={dbState.inventoryItems}
+                  onRefreshData={refreshData}
+                />
+              )}
 
-          {currentModule === 'orders' && (
-            <OrdersView
-              sales={dbState.sales}
-              settings={dbState.settings}
-              currentUser={currentUser}
-              onRefreshData={refreshData}
-            />
-          )}
+              {currentModule === 'orders' && (
+                <OrdersView
+                  sales={dbState.sales}
+                  settings={dbState.settings}
+                  currentUser={currentUser}
+                  onRefreshData={refreshData}
+                />
+              )}
 
-          {currentModule === 'expenses' && (
-            <ExpensesView
-              expenses={dbState.expenses}
-              expenseCategories={dbState.expenseCategories}
-              activeShift={activeShift}
-              onRefreshData={refreshData}
-            />
-          )}
+              {currentModule === 'expenses' && (
+                <ExpensesView
+                  expenses={dbState.expenses}
+                  expenseCategories={dbState.expenseCategories}
+                  activeShift={activeShift}
+                  currentUser={currentUser}
+                  onRefreshData={refreshData}
+                />
+              )}
 
-          {currentModule === 'reports' && (
-            <ReportsView
-              sales={dbState.sales}
-              expenses={dbState.expenses}
-              shifts={dbState.shifts}
-              activeShift={activeShift}
-              categories={dbState.categories}
-              settings={dbState.settings}
-            />
-          )}
+              {currentModule === 'reports' && (
+                <ReportsView
+                  sales={dbState.sales}
+                  expenses={dbState.expenses}
+                  shifts={dbState.shifts}
+                  activeShift={activeShift}
+                  categories={dbState.categories}
+                  settings={dbState.settings}
+                />
+              )}
 
-          {currentModule === 'staff' && (
-            <StaffView
-              users={dbState.users}
-              currentUser={currentUser}
-              activeShift={activeShift}
-              shifts={dbState.shifts}
-              cashMovements={dbState.cashMovements}
-              sales={dbState.sales}
-              expenses={dbState.expenses}
-              onRefreshData={refreshData}
-              onSwitchUser={() => setIsSwitchUserOpen(true)}
-            />
-          )}
+              {currentModule === 'staff' && (
+                <StaffView
+                  users={dbState.users}
+                  currentUser={currentUser}
+                  activeShift={activeShift}
+                  shifts={dbState.shifts}
+                  cashMovements={dbState.cashMovements}
+                  sales={dbState.sales}
+                  expenses={dbState.expenses}
+                  onRefreshData={refreshData}
+                  onSwitchUser={() => setIsSwitchUserOpen(true)}
+                />
+              )}
 
-          {currentModule === 'settings' && (
-            <SettingsView
-              settings={dbState.settings}
-              auditLogs={dbState.auditLogs}
-              currentUser={currentUser}
-              onRefreshData={refreshData}
-            />
+              {currentModule === 'settings' && (
+                <SettingsView
+                  settings={dbState.settings}
+                  auditLogs={dbState.auditLogs}
+                  currentUser={currentUser}
+                  onRefreshData={refreshData}
+                />
+              )}
+            </>
           )}
         </main>
       </div>

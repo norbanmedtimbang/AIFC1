@@ -45,8 +45,15 @@ export const MenuManagementView: React.FC<MenuManagementViewProps> = ({
   const [isSavingProduct, setIsSavingProduct] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
 
+  // Delete Product Confirmation Modal State
+  const [productToDelete, setProductToDelete] = useState<Product | null>(null);
+  const [isDeletingProduct, setIsDeletingProduct] = useState(false);
+  const [deleteProductError, setDeleteProductError] = useState<string | null>(null);
+
   // New Category State
   const [newCategoryName, setNewCategoryName] = useState('');
+  const [isSavingCategory, setIsSavingCategory] = useState(false);
+  const [categoryError, setCategoryError] = useState<string | null>(null);
 
   // Handle Open Create Product
   const handleOpenCreateProduct = () => {
@@ -82,14 +89,23 @@ export const MenuManagementView: React.FC<MenuManagementViewProps> = ({
     setIsProductModalOpen(true);
   };
 
-  const handleDeleteProduct = async (productId: string) => {
-    if (window.confirm('Are you sure you want to delete this product from the menu?')) {
-      try {
-        await dataService.deleteProduct(productId);
-        onRefreshData();
-      } catch (err) {
-        alert('Failed to delete product: ' + (err as Error).message);
-      }
+  const handlePromptDeleteProduct = (product: Product) => {
+    setDeleteProductError(null);
+    setProductToDelete(product);
+  };
+
+  const handleConfirmDeleteProduct = async () => {
+    if (!productToDelete) return;
+    setIsDeletingProduct(true);
+    setDeleteProductError(null);
+    try {
+      await dataService.deleteProduct(productToDelete.id);
+      setProductToDelete(null);
+      onRefreshData();
+    } catch (err) {
+      setDeleteProductError('Failed to delete product: ' + (err as Error).message);
+    } finally {
+      setIsDeletingProduct(false);
     }
   };
 
@@ -139,9 +155,10 @@ export const MenuManagementView: React.FC<MenuManagementViewProps> = ({
   const handleRemoveVariant = (variantId: string) => {
     if (!editingProduct) return;
     if (editingProduct.variants.length <= 1) {
-      alert('A product must have at least one size variant.');
+      setSaveError('A product must have at least one size variant.');
       return;
     }
+    setSaveError(null);
     setEditingProduct({
       ...editingProduct,
       variants: editingProduct.variants.filter(v => v.id !== variantId)
@@ -190,18 +207,25 @@ export const MenuManagementView: React.FC<MenuManagementViewProps> = ({
 
   // Add Category
   const handleAddCategory = async () => {
-    if (!newCategoryName.trim()) return;
+    setCategoryError(null);
+    if (!newCategoryName.trim()) {
+      setCategoryError('Please enter a category name.');
+      return;
+    }
     const newCat: Category = {
       id: 'cat-' + Date.now(),
       name: newCategoryName.trim(),
       displayOrder: categories.length + 1
     };
+    setIsSavingCategory(true);
     try {
       await dataService.saveCategory(newCat);
       setNewCategoryName('');
       onRefreshData();
     } catch (err) {
-      alert('Failed to save category: ' + (err as Error).message);
+      setCategoryError('Failed to save category: ' + (err as Error).message);
+    } finally {
+      setIsSavingCategory(false);
     }
   };
 
@@ -382,7 +406,7 @@ export const MenuManagementView: React.FC<MenuManagementViewProps> = ({
                             <Edit2 className="w-3.5 h-3.5" />
                           </button>
                           <button
-                            onClick={() => handleDeleteProduct(product.id)}
+                            onClick={() => handlePromptDeleteProduct(product)}
                             className="p-1 rounded-lg text-[#9B948C] hover:text-[#A25035] hover:bg-red-50 cursor-pointer"
                             title="Delete"
                           >
@@ -402,20 +426,37 @@ export const MenuManagementView: React.FC<MenuManagementViewProps> = ({
       {/* CATEGORIES TAB */}
       {activeTab === 'categories' && (
         <div className="space-y-4 max-w-xl">
+          {categoryError && (
+            <div className="p-2.5 rounded-lg bg-red-50 border border-red-200 text-red-700 text-xs flex items-center gap-2">
+              <AlertCircle className="w-3.5 h-3.5 shrink-0 text-red-600" />
+              <span>{categoryError}</span>
+            </div>
+          )}
           <div className="bg-white p-3 rounded-xl border border-[#E8E2D9] flex items-center gap-2">
             <input
               type="text"
               placeholder="New Category Name (e.g. Cold Brew, Pastries)"
               value={newCategoryName}
-              onChange={e => setNewCategoryName(e.target.value)}
+              onChange={e => {
+                setNewCategoryName(e.target.value);
+                setCategoryError(null);
+              }}
+              onKeyDown={e => {
+                if (e.key === 'Enter') handleAddCategory();
+              }}
               className="flex-1 bg-white border border-[#E8E2D9] rounded-lg px-3 py-1.5 text-xs text-[#292929] outline-hidden focus:border-[#3B2925]"
             />
             <button
               onClick={handleAddCategory}
-              className="px-3 py-1.5 bg-[#3B2925] text-white rounded-lg text-xs font-medium hover:bg-[#2C1E1A] transition flex items-center gap-1 cursor-pointer"
+              disabled={isSavingCategory}
+              className="px-3 py-1.5 bg-[#3B2925] text-white rounded-lg text-xs font-medium hover:bg-[#2C1E1A] transition flex items-center gap-1 cursor-pointer disabled:opacity-60"
             >
-              <Plus className="w-3.5 h-3.5" />
-              <span>Add</span>
+              {isSavingCategory ? (
+                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+              ) : (
+                <Plus className="w-3.5 h-3.5" />
+              )}
+              <span>{isSavingCategory ? 'Saving...' : 'Add'}</span>
             </button>
           </div>
 
@@ -737,6 +778,60 @@ export const MenuManagementView: React.FC<MenuManagementViewProps> = ({
                   )}
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* DELETE PRODUCT CONFIRMATION MODAL */}
+      {productToDelete && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-2xs p-4">
+          <div className="w-full max-w-sm bg-white rounded-2xl shadow-xl border border-[#E8E2D9] overflow-hidden">
+            <div className="p-4 border-b border-[#E8E2D9] flex items-center justify-between">
+              <h3 className="font-semibold text-sm text-[#292929]">Delete Product</h3>
+              <button
+                onClick={() => setProductToDelete(null)}
+                disabled={isDeletingProduct}
+                className="p-1 rounded-lg text-[#7A736C] hover:text-[#292929] cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <div className="p-5 space-y-3 text-xs">
+              {deleteProductError && (
+                <div className="p-2.5 rounded-lg bg-red-50 border border-red-200 text-red-700 text-xs flex items-center gap-2">
+                  <AlertCircle className="w-3.5 h-3.5 shrink-0 text-red-600" />
+                  <span>{deleteProductError}</span>
+                </div>
+              )}
+              <p className="text-[#6E6862]">
+                Are you sure you want to remove <strong className="text-[#292929]">{productToDelete.name}</strong> from the menu? Past sales records will keep their historical snapshot.
+              </p>
+            </div>
+            <div className="p-4 bg-[#FBF9F5] border-t border-[#E8E2D9] flex justify-end gap-2">
+              <button
+                type="button"
+                disabled={isDeletingProduct}
+                onClick={() => setProductToDelete(null)}
+                className="px-4 py-2 rounded-xl text-xs font-medium text-[#6E6862] hover:bg-[#EFE9DF] cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={isDeletingProduct}
+                onClick={handleConfirmDeleteProduct}
+                className="px-4 py-2 rounded-xl text-xs font-medium bg-red-600 text-white hover:bg-red-700 transition shadow-xs flex items-center gap-1.5 cursor-pointer disabled:opacity-60"
+              >
+                {isDeletingProduct ? (
+                  <>
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    <span>Deleting...</span>
+                  </>
+                ) : (
+                  <span>Delete Product</span>
+                )}
+              </button>
             </div>
           </div>
         </div>

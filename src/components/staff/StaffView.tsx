@@ -16,6 +16,7 @@ import {
 import { User, CashierShift, CashMovement, Sale, Expense } from '../../types';
 import { db, formatPHP, parsePHPAmountToCents } from '../../services/storage';
 import { dataService } from '../../services/dataService';
+import { ConfirmModal } from '../shared/ConfirmModal';
 
 interface StaffViewProps {
   users: User[];
@@ -66,6 +67,9 @@ export const StaffView: React.FC<StaffViewProps> = ({
   // Modal errors and loading states
   const [modalError, setModalError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [userToDelete, setUserToDelete] = useState<{ id: string; name: string } | null>(null);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [isDeletingUser, setIsDeletingUser] = useState(false);
 
   // Active shift calculations
   const shiftCashSales = activeShift
@@ -202,18 +206,27 @@ export const StaffView: React.FC<StaffViewProps> = ({
   };
 
   // Delete User
-  const handleDeleteUser = async (userId: string, userName: string) => {
+  const handlePromptDeleteUser = (userId: string, userName: string) => {
+    setDeleteError(null);
     if (userId === currentUser.id) {
-      alert('You cannot delete your own active session account.');
+      setDeleteError('You cannot delete your own active session account.');
       return;
     }
-    if (window.confirm(`Are you sure you want to remove staff account "${userName}"?`)) {
-      try {
-        await dataService.deleteUser(userId);
-        onRefreshData();
-      } catch (err) {
-        alert('Failed to remove staff member: ' + (err as Error).message);
-      }
+    setUserToDelete({ id: userId, name: userName });
+  };
+
+  const handleConfirmDeleteUser = async () => {
+    if (!userToDelete || isDeletingUser) return;
+    setIsDeletingUser(true);
+    setDeleteError(null);
+    try {
+      await dataService.deleteUser(userToDelete.id);
+      setUserToDelete(null);
+      onRefreshData();
+    } catch (err) {
+      setDeleteError('Failed to remove staff member: ' + (err as Error).message);
+    } finally {
+      setIsDeletingUser(false);
     }
   };
 
@@ -335,59 +348,74 @@ export const StaffView: React.FC<StaffViewProps> = ({
         )}
       </div>
 
-      {/* STAFF ACCOUNTS DIRECTORY */}
-      <div className="space-y-4">
-        <div className="flex items-center justify-between">
-          <h3 className="font-bold text-sm uppercase tracking-wider text-c5-charcoal">
-            Staff Members & Local PINs ({users.length})
-          </h3>
-          <button
-            onClick={() => setIsUserModalOpen(true)}
-            className="px-3.5 py-1.5 rounded-xl bg-c5-espresso text-c5-cream text-xs font-bold hover:bg-c5-espresso-dark transition flex items-center gap-1.5 shadow-xs"
-          >
-            <Plus className="w-4 h-4" />
-            <span>Add Staff Account</span>
-          </button>
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          {users.map(u => (
-            <div
-              key={u.id}
-              className="bg-white p-5 rounded-2xl border border-c5-beige shadow-xs flex items-center justify-between"
-            >
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-c5-cream text-c5-espresso font-bold text-sm flex items-center justify-center">
-                  {u.fullName.slice(0, 2).toUpperCase()}
-                </div>
-                <div>
-                  <h4 className="font-bold text-sm text-c5-charcoal">{u.fullName}</h4>
-                  <p className="text-[11px] text-c5-charcoal-muted capitalize">
-                    @{u.username} • <span className="font-semibold text-c5-espresso">{u.role}</span>
-                  </p>
-                </div>
-              </div>
-              <div className="flex items-center gap-2">
-                <div className="text-right">
-                  <span className="text-[10px] text-c5-charcoal-muted uppercase block">PIN</span>
-                  <span className="font-mono font-bold text-xs bg-c5-cream px-2 py-0.5 rounded border border-c5-beige">
-                    ••••
-                  </span>
-                </div>
-                {currentUser.role === 'admin' && u.id !== currentUser.id && (
-                  <button
-                    onClick={() => handleDeleteUser(u.id, u.fullName)}
-                    title="Remove user"
-                    className="p-1.5 rounded-lg text-stone-400 hover:text-rose-600 hover:bg-rose-50 transition cursor-pointer"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </button>
-                )}
-              </div>
+        {/* STAFF ACCOUNTS DIRECTORY (Admins and Managers only) */}
+      {currentUser.role !== 'cashier' && (
+        <div className="space-y-4">
+          {deleteError && (
+            <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-xs text-rose-700 flex items-center justify-between">
+              <span className="font-semibold">{deleteError}</span>
+              <button
+                onClick={() => setDeleteError(null)}
+                className="p-1 text-rose-500 hover:text-rose-700 cursor-pointer"
+              >
+                ✕
+              </button>
             </div>
-          ))}
+          )}
+          <div className="flex items-center justify-between">
+            <h3 className="font-bold text-sm uppercase tracking-wider text-c5-charcoal">
+              Staff Members & Local PINs ({users.length})
+            </h3>
+            {(currentUser.role === 'admin' || currentUser.role === 'manager') && (
+              <button
+                onClick={() => setIsUserModalOpen(true)}
+                className="px-3.5 py-1.5 rounded-xl bg-c5-espresso text-c5-cream text-xs font-bold hover:bg-c5-espresso-dark transition flex items-center gap-1.5 shadow-xs cursor-pointer"
+              >
+                <Plus className="w-4 h-4" />
+                <span>Add Staff Account</span>
+              </button>
+            )}
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            {users.map(u => (
+              <div
+                key={u.id}
+                className="bg-white p-5 rounded-2xl border border-c5-beige shadow-xs flex items-center justify-between"
+              >
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-c5-cream text-c5-espresso font-bold text-sm flex items-center justify-center">
+                    {u.fullName.slice(0, 2).toUpperCase()}
+                  </div>
+                  <div>
+                    <h4 className="font-bold text-sm text-c5-charcoal">{u.fullName}</h4>
+                    <p className="text-[11px] text-c5-charcoal-muted capitalize">
+                      @{u.username} • <span className="font-semibold text-c5-espresso">{u.role}</span>
+                    </p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <div className="text-right">
+                    <span className="text-[10px] text-c5-charcoal-muted uppercase block">PIN</span>
+                    <span className="font-mono font-bold text-xs bg-c5-cream px-2 py-0.5 rounded border border-c5-beige">
+                      ••••
+                    </span>
+                  </div>
+                  {currentUser.role === 'admin' && u.id !== currentUser.id && (
+                    <button
+                      onClick={() => handlePromptDeleteUser(u.id, u.fullName)}
+                      title="Remove user"
+                      className="p-1.5 rounded-lg text-stone-400 hover:text-rose-600 hover:bg-rose-50 transition cursor-pointer"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
         </div>
-      </div>
+      )}
 
       {/* OPEN SHIFT MODAL */}
       {isOpenShiftModalOpen && (
@@ -770,6 +798,23 @@ export const StaffView: React.FC<StaffViewProps> = ({
           </div>
         </div>
       )}
+
+      {/* CONFIRM DELETE USER MODAL */}
+      <ConfirmModal
+        isOpen={!!userToDelete}
+        onClose={() => {
+          if (!isDeletingUser) {
+            setUserToDelete(null);
+            setDeleteError(null);
+          }
+        }}
+        onConfirm={handleConfirmDeleteUser}
+        title="Remove Staff Account"
+        message={`Are you sure you want to permanently remove staff account "${userToDelete?.name}"? This action cannot be undone.`}
+        confirmText="Remove Account"
+        confirmVariant="danger"
+        isLoading={isDeletingUser}
+      />
     </div>
   );
 };

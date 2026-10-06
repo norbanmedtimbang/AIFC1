@@ -16,7 +16,9 @@ import {
 } from 'lucide-react';
 import { ShopSettings, AuditLog, User } from '../../types';
 import { db } from '../../services/storage';
+import { dataService } from '../../services/dataService';
 import { PinDialog } from '../shared/PinDialog';
+import { ConfirmModal } from '../shared/ConfirmModal';
 
 interface SettingsViewProps {
   settings: ShopSettings;
@@ -50,24 +52,30 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     checksum: string;
   } | null>(null);
   const [restoreStatus, setRestoreStatus] = useState<string | null>(null);
+  const [backupContentToRestore, setBackupContentToRestore] = useState<string | null>(null);
+  const [isRestoring, setIsRestoring] = useState(false);
 
   // Factory Reset Pin Dialog
   const [isResetPinOpen, setIsResetPinOpen] = useState(false);
 
-  const handleSaveSettings = () => {
-    db.updateSettings({
-      storeName: storeName.trim(),
-      tagline: tagline.trim(),
-      branchName: branchName.trim(),
-      address: address.trim(),
-      phone: phone.trim(),
-      tinNumber: tinNumber.trim(),
-      receiptHeader: receiptHeader.trim(),
-      receiptFooter: receiptFooter.trim()
-    });
-    setSaveSuccess(true);
-    setTimeout(() => setSaveSuccess(false), 3000);
-    onRefreshData();
+  const handleSaveSettings = async () => {
+    try {
+      await dataService.saveSettings({
+        storeName: storeName.trim(),
+        tagline: tagline.trim(),
+        branchName: branchName.trim(),
+        address: address.trim(),
+        phone: phone.trim(),
+        tinNumber: tinNumber.trim(),
+        receiptHeader: receiptHeader.trim(),
+        receiptFooter: receiptFooter.trim()
+      });
+      setSaveSuccess(true);
+      setTimeout(() => setSaveSuccess(false), 3000);
+      onRefreshData();
+    } catch (err) {
+      console.warn('Failed saving settings:', err);
+    }
   };
 
   // One-click Backup Export
@@ -356,30 +364,34 @@ VALUES ('usr-admin', 'admin', '1234', 'System Administrator', 'admin', 'active')
     reader.onload = event => {
       const content = event.target?.result as string;
       if (!content) return;
-
-      if (
-        window.confirm(
-          'Restoring will replace all current business records with the data from this backup file. Do you wish to continue?'
-        )
-      ) {
-        const result = db.restoreBackup(content);
-        if (result.success) {
-          setRestoreStatus('Database successfully restored from backup.');
-          onRefreshData();
-        } else {
-          setRestoreStatus('Failed: ' + result.message);
-        }
-      }
+      setBackupContentToRestore(content);
     };
     reader.readAsText(file);
     e.target.value = '';
   };
 
+  const handleConfirmRestoreBackup = () => {
+    if (!backupContentToRestore) return;
+    setIsRestoring(true);
+    try {
+      const result = db.restoreBackup(backupContentToRestore);
+      if (result.success) {
+        setRestoreStatus('Database successfully restored from backup.');
+        onRefreshData();
+      } else {
+        setRestoreStatus('Failed: ' + result.message);
+      }
+    } finally {
+      setIsRestoring(false);
+      setBackupContentToRestore(null);
+    }
+  };
+
   const handleAuthorizedReset = () => {
     setIsResetPinOpen(false);
     db.resetToFactory();
-    alert('System reset to default seed data.');
-    window.location.reload();
+    setRestoreStatus('System successfully reset to default seed data.');
+    onRefreshData();
   };
 
   return (
@@ -738,6 +750,20 @@ VALUES ('usr-admin', 'admin', '1234', 'System Administrator', 'admin', 'active')
         title="Admin Authorization Required"
         description="Enter Administrator 4-digit PIN (default 1234) to reset database"
         allowedRoles={['admin']}
+      />
+
+      {/* CONFIRM RESTORE BACKUP MODAL */}
+      <ConfirmModal
+        isOpen={!!backupContentToRestore}
+        onClose={() => {
+          if (!isRestoring) setBackupContentToRestore(null);
+        }}
+        onConfirm={handleConfirmRestoreBackup}
+        title="Confirm Backup Restoration"
+        message="Restoring will replace all current business records with the data from this backup file. All recent unsaved modifications will be overwritten. Do you wish to continue?"
+        confirmText="Restore Backup"
+        confirmVariant="danger"
+        isLoading={isRestoring}
       />
     </div>
   );

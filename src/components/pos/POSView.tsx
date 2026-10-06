@@ -46,7 +46,10 @@ export const POSView: React.FC<POSViewProps> = ({
   categories,
   modifierGroups,
   settings,
-  onRefreshData
+  currentUser,
+  activeShift,
+  onRefreshData,
+  onOpenShiftModal
 }) => {
   // Category & Search State
   const [selectedCategory, setSelectedCategory] = useState<string>('all');

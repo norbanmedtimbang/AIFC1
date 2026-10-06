@@ -64,10 +64,28 @@ class DataService {
     users: [
       {
         id: 'usr-admin',
-        username: 'admin',
-        fullName: 'System Administrator',
+        username: 'juan.admin',
+        fullName: 'Juan Dela Cruz',
         role: 'admin',
         pinHash: '1234',
+        status: 'active',
+        createdAt: new Date().toISOString()
+      },
+      {
+        id: 'usr-manager',
+        username: 'pedro.mgr',
+        fullName: 'Pedro Reyes',
+        role: 'manager',
+        pinHash: '2345',
+        status: 'active',
+        createdAt: new Date().toISOString()
+      },
+      {
+        id: 'usr-cashier',
+        username: 'maria.pos',
+        fullName: 'Maria Santos',
+        role: 'cashier',
+        pinHash: '3456',
         status: 'active',
         createdAt: new Date().toISOString()
       }
@@ -133,13 +151,42 @@ class DataService {
     return user;
   }
 
+  public loadOfflineData(): AppDataState {
+    const local = db.getState();
+    this.state = {
+      ...this.state,
+      users: local.users && local.users.length > 0 ? local.users : this.state.users,
+      currentUserId: local.currentUserId || this.state.currentUserId,
+      activeShift: local.activeShift,
+      shifts: local.shifts || [],
+      cashMovements: local.cashMovements || [],
+      categories: local.categories || [],
+      products: local.products || [],
+      modifierGroups: local.modifierGroups && local.modifierGroups.length > 0 ? local.modifierGroups : this.state.modifierGroups,
+      inventoryItems: local.inventoryItems || [],
+      inventoryMovements: local.inventoryMovements || [],
+      suppliers: local.suppliers || [],
+      purchases: local.purchases || [],
+      sales: local.sales || [],
+      refunds: local.refunds || [],
+      expenseCategories: local.expenseCategories || this.state.expenseCategories,
+      expenses: local.expenses || [],
+      auditLogs: local.auditLogs || [],
+      settings: local.settings || this.state.settings
+    };
+    this.isInitialized = true;
+    this.notify();
+    return this.getState();
+  }
+
   /**
-   * Loads all business data directly from Supabase PostgreSQL.
-   * Throws if Supabase is unreachable or critical tables fail.
+   * Loads all business data from Supabase PostgreSQL.
+   * If Supabase is offline or tables are unreachable, falls back gracefully to local database.
    */
   public async loadAllData(): Promise<AppDataState> {
     if (!isSupabaseConfigured() || !supabase) {
-      throw new Error('Supabase client is not configured. Check VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY.');
+      console.warn('Supabase not configured, using offline local database.');
+      return this.loadOfflineData();
     }
 
     try {
@@ -149,7 +196,10 @@ class DataService {
         .select('*')
         .order('display_order', { ascending: true });
 
-      if (catErr) throw new Error(`Failed to load categories: ${catErr.message}`);
+      if (catErr) {
+        console.warn('Categories query error, using offline cache:', catErr.message);
+        return this.loadOfflineData();
+      }
 
       // 2. Fetch Products with Variants
       const { data: prodData, error: prodErr } = await supabase
@@ -157,7 +207,10 @@ class DataService {
         .select('*, product_variants(*)')
         .order('display_order', { ascending: true });
 
-      if (prodErr) throw new Error(`Failed to load products: ${prodErr.message}`);
+      if (prodErr) {
+        console.warn('Products query error, using offline cache:', prodErr.message);
+        return this.loadOfflineData();
+      }
 
       // 3. Fetch Recipes (Bill of Materials)
       const { data: recipeData, error: recipeErr } = await supabase
@@ -174,7 +227,10 @@ class DataService {
         .select('*')
         .order('name', { ascending: true });
 
-      if (invErr) throw new Error(`Failed to load inventory: ${invErr.message}`);
+      if (invErr) {
+        console.warn('Inventory query error, using offline cache:', invErr.message);
+        return this.loadOfflineData();
+      }
 
       // 5. Fetch Inventory Movements (Recent 100)
       const { data: movData, error: movErr } = await supabase
@@ -193,14 +249,20 @@ class DataService {
         .select('*, sale_items(*)')
         .order('created_at', { ascending: false });
 
-      if (salesErr) throw new Error(`Failed to load sales: ${salesErr.message}`);
+      if (salesErr) {
+        console.warn('Sales query error, using offline cache:', salesErr.message);
+        return this.loadOfflineData();
+      }
 
       // 7. Fetch Users & Staff
       const { data: usersData, error: usersErr } = await supabase
         .from('users')
         .select('*');
 
-      if (usersErr) throw new Error(`Failed to load users: ${usersErr.message}`);
+      if (usersErr) {
+        console.warn('Users query error, using offline cache:', usersErr.message);
+        return this.loadOfflineData();
+      }
 
       // 8. Fetch Cashier Shifts & Cash Movements
       const { data: shiftsData, error: shiftsErr } = await supabase
@@ -242,7 +304,87 @@ class DataService {
           receiptReference: e.receipt_reference || undefined,
           spentAt: e.created_at || new Date().toISOString()
         }));
+      } else {
+        expensesList = db.getState().expenses || [];
       }
+
+      // 10. Fetch Settings from Supabase shop_settings
+      let settingsObj: ShopSettings = db.getState().settings || defaultSettings;
+      try {
+        const { data: setRows } = await supabase.from('shop_settings').select('*');
+        if (setRows && setRows.length > 0) {
+          const dict: Record<string, string> = {};
+          setRows.forEach((r: any) => {
+            dict[r.setting_key] = r.setting_value;
+          });
+          settingsObj = {
+            ...settingsObj,
+            storeName: dict['shop_name'] || dict['business_name'] || settingsObj.storeName,
+            tagline: dict['tagline'] || settingsObj.tagline,
+            branchName: dict['branch_name'] || settingsObj.branchName,
+            address: dict['address'] || settingsObj.address,
+            phone: dict['phone'] || settingsObj.phone,
+            tinNumber: dict['tin'] || settingsObj.tinNumber,
+            receiptHeader: dict['receipt_header']
+              ? dict['receipt_header'].replace(/\\n/g, '\n')
+              : settingsObj.receiptHeader,
+            receiptFooter: dict['receipt_footer']
+              ? dict['receipt_footer'].replace(/\\n/g, '\n')
+              : settingsObj.receiptFooter,
+            taxRatePercent: dict['tax_rate_percent']
+              ? Number(dict['tax_rate_percent'])
+              : settingsObj.taxRatePercent,
+            currencySymbol: dict['currency_symbol'] || settingsObj.currencySymbol
+          };
+        }
+      } catch (e) {
+        console.warn('Notice: shop_settings query skipped:', e);
+      }
+
+      // 11. Fetch suppliers & purchases (with offline fallback)
+      let suppliersList: Supplier[] = db.getState().suppliers || [];
+      try {
+        const { data: supData, error: supErr } = await supabase.from('suppliers').select('*');
+        if (!supErr && supData && supData.length > 0) {
+          suppliersList = supData.map((s: any) => ({
+            id: s.id,
+            companyName: s.company_name,
+            contactPerson: s.contact_person || undefined,
+            phone: s.phone || undefined,
+            email: s.email || undefined,
+            address: s.address || undefined
+          }));
+        }
+      } catch {}
+
+      let purchasesList: Purchase[] = db.getState().purchases || [];
+      try {
+        const { data: purData, error: purErr } = await supabase
+          .from('purchases')
+          .select('*, purchase_items(*)')
+          .order('purchased_at', { ascending: false });
+        if (!purErr && purData && purData.length > 0) {
+          purchasesList = purData.map((p: any) => ({
+            id: p.id,
+            supplierId: p.supplier_id,
+            supplierName: p.supplier_name || 'Vendor',
+            invoiceNumber: p.invoice_number || undefined,
+            status: p.status,
+            totalAmountCents: Number(p.total_amount_cents) || 0,
+            purchasedAt: p.purchased_at,
+            receivedAt: p.received_at || undefined,
+            items: (p.purchase_items || []).map((pi: any) => ({
+              id: pi.id,
+              inventoryItemId: pi.inventory_item_id,
+              itemName: pi.item_name || 'Ingredient',
+              unit: pi.unit || 'units',
+              quantity: Number(pi.quantity) || 0,
+              unitCostCents: Number(pi.unit_cost_cents) || 0,
+              totalCostCents: Number(pi.total_cost_cents) || 0
+            }))
+          }));
+        }
+      } catch {}
 
       // -------------------------------------------------------------
       // Transform & Assemble Supabase rows into Typed Business State
@@ -423,7 +565,7 @@ class DataService {
         };
       });
 
-      // Update in-memory state directly from Supabase
+      // Update in-memory state directly from Supabase with offline fallbacks
       this.state = {
         ...this.state,
         categories,
@@ -435,15 +577,20 @@ class DataService {
         activeShift,
         cashMovements,
         sales,
-        expenses: expensesList
+        expenses: expensesList,
+        settings: settingsObj,
+        suppliers: suppliersList,
+        purchases: purchasesList,
+        modifierGroups: db.getState().modifierGroups && db.getState().modifierGroups.length > 0 ? db.getState().modifierGroups : this.state.modifierGroups,
+        auditLogs: db.getState().auditLogs && db.getState().auditLogs.length > 0 ? db.getState().auditLogs : this.state.auditLogs
       };
 
       this.isInitialized = true;
       this.notify();
       return this.getState();
     } catch (err) {
-      console.error('DataService.loadAllData error:', err);
-      throw err;
+      console.warn('DataService.loadAllData error, smoothly falling back to offline cache:', err);
+      return this.loadOfflineData();
     }
   }
 
@@ -457,10 +604,6 @@ class DataService {
    * 6. Refreshes in-memory state on success
    */
   public async saveProduct(product: Product): Promise<Product> {
-    if (!isSupabaseConfigured() || !supabase) {
-      throw new Error('Supabase is not configured. Cannot save product to cloud database.');
-    }
-
     // Validation
     if (!product.name || !product.name.trim()) {
       throw new Error('Product name is required.');
@@ -474,120 +617,241 @@ class DataService {
 
     const productId = product.id || 'prod-' + Date.now();
 
-    // 1. Upsert product
-    const { error: pErr } = await supabase.from('products').upsert({
-      id: productId,
-      category_id: product.categoryId,
-      sku: product.sku || null,
-      name: product.name.trim(),
-      description: product.description || null,
-      image_url: product.imageUrl || null,
-      is_active: product.isActive,
-      display_order: product.displayOrder ?? 0
-    });
-
-    if (pErr) {
-      throw new Error(`Database error saving product: ${pErr.message}`);
+    if (!isSupabaseConfigured() || !supabase) {
+      db.saveProduct(product);
+      await this.loadAllData();
+      return product;
     }
 
-    // 2. Upsert variants
-    const validVariantIds: string[] = [];
-    for (const v of product.variants) {
-      const vId = v.id || 'var-' + Date.now() + '-' + Math.random().toString(36).substr(2, 4);
-      validVariantIds.push(vId);
-
-      const { error: vErr } = await supabase.from('product_variants').upsert({
-        id: vId,
-        product_id: productId,
-        name: v.name.trim(),
-        sku: v.sku || null,
-        price_cents: Math.round(v.priceCents),
-        cost_price_cents: Math.round(v.costPriceCents || 0),
-        is_active: v.isActive
+    try {
+      // 1. Upsert product
+      const { error: pErr } = await supabase.from('products').upsert({
+        id: productId,
+        category_id: product.categoryId,
+        sku: product.sku || null,
+        name: product.name.trim(),
+        description: product.description || null,
+        image_url: product.imageUrl || null,
+        is_active: product.isActive,
+        display_order: product.displayOrder ?? 0
       });
 
-      if (vErr) {
-        throw new Error(`Database error saving variant ${v.name}: ${vErr.message}`);
+      if (pErr) {
+        throw new Error(`Database error saving product: ${pErr.message}`);
       }
 
-      // 3. Upsert recipe bill of materials for this variant
-      const ingredients = product.recipes?.[v.id] || product.recipes?.[vId] || [];
-      // Clean previous recipes for this variant
-      await supabase.from('recipes').delete().eq('variant_id', vId);
+      // 2. Upsert variants
+      const validVariantIds: string[] = [];
+      for (const v of product.variants) {
+        const vId = v.id || 'var-' + Date.now() + '-' + Math.random().toString(36).substr(2, 4);
+        validVariantIds.push(vId);
 
-      if (ingredients.length > 0) {
-        const recipeRows = ingredients.map((ing: RecipeIngredient) => ({
-          id: `recipe-${vId}-${ing.inventoryItemId}`,
-          variant_id: vId,
-          inventory_item_id: ing.inventoryItemId,
-          quantity_required: ing.quantityRequired
-        }));
+        const { error: vErr } = await supabase.from('product_variants').upsert({
+          id: vId,
+          product_id: productId,
+          name: v.name.trim(),
+          sku: v.sku || null,
+          price_cents: Math.round(v.priceCents),
+          cost_price_cents: Math.round(v.costPriceCents || 0),
+          is_active: v.isActive
+        });
 
-        const { error: rErr } = await supabase.from('recipes').insert(recipeRows);
-        if (rErr) {
-          throw new Error(`Database error saving recipe ingredients for ${v.name}: ${rErr.message}`);
+        if (vErr) {
+          throw new Error(`Database error saving variant ${v.name}: ${vErr.message}`);
+        }
+
+        // 3. Upsert recipe bill of materials for this variant
+        const ingredients = product.recipes?.[v.id] || product.recipes?.[vId] || [];
+        // Clean previous recipes for this variant
+        await supabase.from('recipes').delete().eq('variant_id', vId);
+
+        if (ingredients.length > 0) {
+          const recipeRows = ingredients.map((ing: RecipeIngredient) => ({
+            id: `recipe-${vId}-${ing.inventoryItemId}`,
+            variant_id: vId,
+            inventory_item_id: ing.inventoryItemId,
+            quantity_required: ing.quantityRequired
+          }));
+
+          const { error: rErr } = await supabase.from('recipes').insert(recipeRows);
+          if (rErr) {
+            throw new Error(`Database error saving recipe ingredients for ${v.name}: ${rErr.message}`);
+          }
         }
       }
-    }
 
-    // 4. Safely remove deleted variants for this product
-    if (validVariantIds.length > 0) {
-      const { data: existingVars } = await supabase
-        .from('product_variants')
-        .select('id')
-        .eq('product_id', productId);
+      // 4. Safely remove deleted variants for this product
+      if (validVariantIds.length > 0) {
+        const { data: existingVars } = await supabase
+          .from('product_variants')
+          .select('id')
+          .eq('product_id', productId);
 
-      if (existingVars) {
-        const toDelete = existingVars.filter(ev => !validVariantIds.includes(ev.id));
-        for (const td of toDelete) {
-          await supabase.from('recipes').delete().eq('variant_id', td.id);
-          await supabase.from('product_variants').delete().eq('id', td.id);
+        if (existingVars) {
+          const toDelete = existingVars.filter(ev => !validVariantIds.includes(ev.id));
+          for (const td of toDelete) {
+            await supabase.from('recipes').delete().eq('variant_id', td.id);
+            await supabase.from('product_variants').delete().eq('id', td.id);
+          }
         }
       }
-    }
 
-    // 5. Reload fresh state from Supabase to guarantee single source of truth
-    await this.loadAllData();
-    const updated = this.state.products.find(p => p.id === productId);
-    return updated || product;
+      db.saveProduct(product);
+      await this.loadAllData();
+      const updated = this.state.products.find(p => p.id === productId);
+      return updated || product;
+    } catch (err) {
+      console.warn('Supabase saveProduct failed, saving locally:', err);
+      db.saveProduct(product);
+      await this.loadAllData();
+      return product;
+    }
   }
 
   /**
-   * Deletes a product from Supabase
+   * Deletes a product from Supabase (or local db if offline)
    */
   public async deleteProduct(productId: string): Promise<void> {
-    if (!isSupabaseConfigured() || !supabase) {
-      throw new Error('Supabase is not configured.');
+    if (isSupabaseConfigured() && supabase) {
+      try {
+        const { error } = await supabase.from('products').delete().eq('id', productId);
+        if (error) {
+          console.warn('Supabase deleteProduct error:', error.message);
+        }
+      } catch (e) {
+        console.warn('Supabase deleteProduct exception:', e);
+      }
     }
 
-    const { error } = await supabase.from('products').delete().eq('id', productId);
-    if (error) {
-      throw new Error(`Failed to delete product: ${error.message}`);
-    }
-
+    db.deleteProduct(productId);
     await this.loadAllData();
   }
 
   /**
-   * Saves a category to Supabase
+   * Saves a category to Supabase and local db
    */
   public async saveCategory(category: Category): Promise<void> {
-    if (!isSupabaseConfigured() || !supabase) {
-      throw new Error('Supabase is not configured.');
+    if (!category.name || !category.name.trim()) {
+      throw new Error('Category name is required.');
     }
 
-    const { error } = await supabase.from('categories').upsert({
-      id: category.id,
-      name: category.name.trim(),
-      display_order: category.displayOrder,
-      color_code: category.colorCode || null
-    });
+    if (isSupabaseConfigured() && supabase) {
+      try {
+        const { error } = await supabase.from('categories').upsert({
+          id: category.id,
+          name: category.name.trim(),
+          display_order: category.displayOrder,
+          color_code: category.colorCode || null
+        });
 
-    if (error) {
-      throw new Error(`Failed to save category: ${error.message}`);
+        if (error) {
+          console.warn('Supabase category save notice:', error.message);
+        }
+      } catch (e) {
+        console.warn('Supabase saveCategory error:', e);
+      }
     }
 
+    db.saveCategory(category);
     await this.loadAllData();
+  }
+
+  /**
+   * Deletes a category if not in use by active products
+   */
+  public async deleteCategory(categoryId: string): Promise<void> {
+    const prodsInCat = this.state.products.filter(p => p.categoryId === categoryId);
+    if (prodsInCat.length > 0) {
+      throw new Error(`Cannot delete category with ${prodsInCat.length} existing products. Reassign or delete products first.`);
+    }
+
+    if (isSupabaseConfigured() && supabase) {
+      try {
+        const { error } = await supabase.from('categories').delete().eq('id', categoryId);
+        if (error) {
+          console.warn('Supabase deleteCategory error:', error.message);
+        }
+      } catch (e) {
+        console.warn('Supabase deleteCategory error:', e);
+      }
+    }
+
+    const currentDb = db.getState();
+    currentDb.categories = currentDb.categories.filter(c => c.id !== categoryId);
+    this.state.categories = this.state.categories.filter(c => c.id !== categoryId);
+    this.notify();
+  }
+
+  /**
+   * Saves Modifier Group
+   */
+  public saveModifierGroup(group: ModifierGroup): void {
+    const existingIdx = this.state.modifierGroups.findIndex(g => g.id === group.id);
+    if (existingIdx !== -1) {
+      this.state.modifierGroups[existingIdx] = group;
+    } else {
+      this.state.modifierGroups.push(group);
+    }
+
+    const currentDb = db.getState();
+    const mgIdx = currentDb.modifierGroups.findIndex(g => g.id === group.id);
+    if (mgIdx !== -1) {
+      currentDb.modifierGroups[mgIdx] = group;
+    } else {
+      currentDb.modifierGroups.push(group);
+    }
+    db.persistState();
+    this.notify();
+  }
+
+  /**
+   * Deletes Modifier Group
+   */
+  public deleteModifierGroup(groupId: string): void {
+    this.state.modifierGroups = this.state.modifierGroups.filter(g => g.id !== groupId);
+    const currentDb = db.getState();
+    currentDb.modifierGroups = currentDb.modifierGroups.filter(g => g.id !== groupId);
+    db.persistState();
+    this.notify();
+  }
+
+  /**
+   * Saves Settings to Supabase shop_settings and local storage
+   */
+  public async saveSettings(newSettings: Partial<ShopSettings>): Promise<ShopSettings> {
+    this.state.settings = { ...this.state.settings, ...newSettings };
+    db.updateSettings(this.state.settings);
+
+    if (isSupabaseConfigured() && supabase) {
+      try {
+        const updates = [
+          { setting_key: 'shop_name', setting_value: this.state.settings.storeName },
+          { setting_key: 'business_name', setting_value: this.state.settings.storeName },
+          { setting_key: 'tagline', setting_value: this.state.settings.tagline },
+          { setting_key: 'branch_name', setting_value: this.state.settings.branchName },
+          { setting_key: 'address', setting_value: this.state.settings.address },
+          { setting_key: 'phone', setting_value: this.state.settings.phone },
+          { setting_key: 'tin', setting_value: this.state.settings.tinNumber },
+          { setting_key: 'receipt_header', setting_value: this.state.settings.receiptHeader },
+          { setting_key: 'receipt_footer', setting_value: this.state.settings.receiptFooter },
+          { setting_key: 'tax_rate_percent', setting_value: String(this.state.settings.taxRatePercent) },
+          { setting_key: 'currency_symbol', setting_value: this.state.settings.currencySymbol }
+        ];
+
+        for (const u of updates) {
+          await supabase.from('shop_settings').upsert({
+            setting_key: u.setting_key,
+            setting_value: u.setting_value,
+            updated_at: new Date().toISOString()
+          });
+        }
+      } catch (e) {
+        console.warn('Notice: Failed updating cloud shop_settings:', e);
+      }
+    }
+
+    this.notify();
+    return this.state.settings;
   }
 
   /**
@@ -611,202 +875,215 @@ class DataService {
     tenderedCents: number;
     referenceNumber?: string;
   }): Promise<{ sale: Sale; inventoryWarnings: string[] }> {
-    if (!isSupabaseConfigured() || !supabase) {
-      throw new Error('Cloud database is not connected. Unable to complete transaction.');
-    }
-
     if (!payload.items || payload.items.length === 0) {
       throw new Error('Cart is empty.');
     }
 
-    // 1. Calculate totals
-    const subtotalCents = payload.items.reduce((sum, item) => sum + item.totalPriceCents, 0);
-    const discountCents = Math.min(payload.discountCents, subtotalCents);
-    const totalCents = Math.max(0, subtotalCents - discountCents);
-    const taxRate = this.state.settings.taxRatePercent / 100;
-    const taxCents = this.state.settings.isTaxIncluded
-      ? Math.round((totalCents * taxRate) / (1 + taxRate))
-      : Math.round(totalCents * taxRate);
-
-    // Payment validation
-    if (payload.paymentMethod === 'cash') {
-      if (payload.tenderedCents < totalCents) {
-        throw new Error(`Insufficient cash. Tendered ${formatPHP(payload.tenderedCents)} is less than total ${formatPHP(totalCents)}.`);
-      }
-    } else {
-      if (!payload.referenceNumber || !payload.referenceNumber.trim()) {
-        throw new Error(`Reference number is required for ${payload.paymentMethod.toUpperCase()} payments.`);
-      }
+    if (!isSupabaseConfigured() || !supabase) {
+      console.warn('Supabase not configured, processing checkout in offline local database.');
+      const localResult = db.checkoutSale(payload);
+      this.loadOfflineData();
+      return localResult;
     }
 
-    const changeCents = payload.paymentMethod === 'cash'
-      ? Math.max(0, payload.tenderedCents - totalCents)
-      : 0;
+    try {
+      // 1. Calculate totals
+      const subtotalCents = payload.items.reduce((sum, item) => sum + item.totalPriceCents, 0);
+      const discountCents = Math.min(payload.discountCents, subtotalCents);
+      const totalCents = Math.max(0, subtotalCents - discountCents);
+      const taxRate = this.state.settings.taxRatePercent / 100;
+      const taxCents = this.state.settings.isTaxIncluded
+        ? Math.round((totalCents * taxRate) / (1 + taxRate))
+        : Math.round(totalCents * taxRate);
 
-    const currentUser = this.getCurrentUser();
-    const activeShift = this.state.activeShift;
-    const now = new Date();
-
-    // 2. Generate sequential order number with idempotency
-    const dateStr = now.toISOString().slice(0, 10).replace(/-/g, '');
-    const todayCount = this.state.sales.filter(s => s.createdAt.startsWith(now.toISOString().slice(0, 10))).length;
-    const orderNumber = `C5-${dateStr}-${String(todayCount + 1).padStart(4, '0')}`;
-    const saleId = 'sale-' + Date.now() + '-' + Math.random().toString(36).substr(2, 4);
-
-    // 3. STEP A: Insert Sale Record
-    const { error: saleErr } = await supabase.from('sales').insert({
-      id: saleId,
-      order_number: orderNumber,
-      shift_id: activeShift ? activeShift.id : null,
-      cashier_id: currentUser.id,
-      order_type: payload.orderType,
-      customer_name: payload.customerName || null,
-      customer_notes: payload.customerNotes || null,
-      subtotal_cents: subtotalCents,
-      discount_cents: discountCents,
-      discount_label: payload.discountLabel || null,
-      tax_cents: taxCents,
-      total_cents: totalCents,
-      payment_status: 'paid',
-      payment_method: payload.paymentMethod,
-      tendered_cents: payload.tenderedCents,
-      change_cents: changeCents,
-      reference_number: payload.referenceNumber || null,
-      created_at: now.toISOString()
-    });
-
-    if (saleErr) {
-      throw new Error(`Checkout failed writing sale record: ${saleErr.message}`);
-    }
-
-    // 4. STEP B: Insert Sale Items
-    const saleItemsRows = payload.items.map((cartItem, idx) => ({
-      id: `sitem-${Date.now()}-${idx}-${Math.random().toString(36).substr(2, 3)}`,
-      sale_id: saleId,
-      product_id: cartItem.product.id,
-      variant_id: cartItem.variant.id,
-      product_name_snapshot: cartItem.product.name,
-      variant_name_snapshot: cartItem.variant.name,
-      unit_price_cents: cartItem.unitPriceCents,
-      quantity: cartItem.quantity,
-      subtotal_cents: cartItem.totalPriceCents,
-      notes: cartItem.notes || (cartItem.selectedModifiers.length > 0 
-        ? cartItem.selectedModifiers.map(m => m.name).join(', ') 
-        : null)
-    }));
-
-    const { error: itemsErr } = await supabase.from('sale_items').insert(saleItemsRows);
-    if (itemsErr) {
-      // Rollback sale
-      await supabase.from('sales').delete().eq('id', saleId);
-      throw new Error(`Checkout failed writing sale items: ${itemsErr.message}. Order rolled back.`);
-    }
-
-    // 5. STEP C: Inventory Deductions via Recipes
-    const inventoryWarnings: string[] = [];
-    const itemDeductions: Record<string, { deduction: number; itemName: string }> = {};
-
-    for (const cartItem of payload.items) {
-      const recipes = cartItem.product.recipes?.[cartItem.variant.id] || [];
-      for (const ingredient of recipes) {
-        if (!itemDeductions[ingredient.inventoryItemId]) {
-          itemDeductions[ingredient.inventoryItemId] = {
-            deduction: 0,
-            itemName: ingredient.itemName
-          };
+      // Payment validation
+      if (payload.paymentMethod === 'cash') {
+        if (payload.tenderedCents < totalCents) {
+          throw new Error(`Insufficient cash. Tendered ${formatPHP(payload.tenderedCents)} is less than total ${formatPHP(totalCents)}.`);
         }
-        itemDeductions[ingredient.inventoryItemId].deduction += ingredient.quantityRequired * cartItem.quantity;
-      }
-    }
-
-    // Apply inventory deductions and record movements in Supabase
-    for (const [invId, { deduction, itemName }] of Object.entries(itemDeductions)) {
-      const currentItem = this.state.inventoryItems.find(i => i.id === invId);
-      const currentStock = currentItem ? currentItem.currentStock : 0;
-      const newStock = Math.max(0, currentStock - deduction);
-
-      if (currentItem && newStock < currentItem.minThreshold) {
-        inventoryWarnings.push(`Low stock alert: ${itemName} (${newStock.toFixed(1)} ${currentItem.unit} remaining)`);
+      } else {
+        if (!payload.referenceNumber || !payload.referenceNumber.trim()) {
+          throw new Error(`Reference number is required for ${payload.paymentMethod.toUpperCase()} payments.`);
+        }
       }
 
-      // Update inventory stock in Supabase
-      const { error: stockErr } = await supabase
-        .from('inventory_items')
-        .update({
-          current_stock: newStock,
-          updated_at: now.toISOString()
-        })
-        .eq('id', invId);
+      const changeCents = payload.paymentMethod === 'cash'
+        ? Math.max(0, payload.tenderedCents - totalCents)
+        : 0;
 
-      if (stockErr) {
-        console.warn(`Notice: Failed updating stock for ${itemName}:`, stockErr.message);
-      }
+      const currentUser = this.getCurrentUser();
+      const activeShift = this.state.activeShift;
+      const now = new Date();
 
-      // Record inventory movement in Supabase
-      await supabase.from('inventory_movements').insert({
-        id: 'mov-' + Date.now() + '-' + Math.random().toString(36).substr(2, 4),
-        inventory_item_id: invId,
-        type: 'sale',
-        quantity_delta: -deduction,
-        balance_after: newStock,
-        reference_id: saleId,
-        notes: `Deducted for Order ${orderNumber}`,
-        created_by: currentUser.fullName,
+      // 2. Generate sequential order number with idempotency
+      const dateStr = now.toISOString().slice(0, 10).replace(/-/g, '');
+      const todayCount = this.state.sales.filter(s => s.createdAt.startsWith(now.toISOString().slice(0, 10))).length;
+      const orderNumber = `C5-${dateStr}-${String(todayCount + 1).padStart(4, '0')}`;
+      const saleId = 'sale-' + Date.now() + '-' + Math.random().toString(36).substr(2, 4);
+
+      // 3. STEP A: Insert Sale Record
+      const { error: saleErr } = await supabase.from('sales').insert({
+        id: saleId,
+        order_number: orderNumber,
+        shift_id: activeShift ? activeShift.id : null,
+        cashier_id: currentUser.id,
+        order_type: payload.orderType,
+        customer_name: payload.customerName || null,
+        customer_notes: payload.customerNotes || null,
+        subtotal_cents: subtotalCents,
+        discount_cents: discountCents,
+        discount_label: payload.discountLabel || null,
+        tax_cents: taxCents,
+        total_cents: totalCents,
+        payment_status: 'paid',
+        payment_method: payload.paymentMethod,
+        tendered_cents: payload.tenderedCents,
+        change_cents: changeCents,
+        reference_number: payload.referenceNumber || null,
         created_at: now.toISOString()
       });
-    }
 
-    // 6. Reload fresh data from Supabase to guarantee all terminals stay in sync
-    await this.loadAllData();
+      if (saleErr) {
+        throw new Error(`Checkout failed writing sale record: ${saleErr.message}`);
+      }
 
-    const createdSale = this.state.sales.find(s => s.id === saleId) || {
-      id: saleId,
-      orderNumber,
-      shiftId: activeShift ? activeShift.id : undefined,
-      cashierId: currentUser.id,
-      cashierName: currentUser.fullName,
-      orderType: payload.orderType,
-      customerName: payload.customerName,
-      customerNotes: payload.customerNotes,
-      subtotalCents,
-      discountCents,
-      discountLabel: payload.discountLabel,
-      taxCents,
-      totalCents,
-      paymentStatus: 'paid',
-      payment: {
-        id: 'pay-' + saleId,
-        method: payload.paymentMethod,
-        amountCents: totalCents,
-        tenderedCents: payload.tenderedCents,
-        changeCents,
-        referenceNumber: payload.referenceNumber,
-        processedAt: now.toISOString()
-      },
-      items: payload.items.map((cartItem, idx) => ({
-        id: `sitem-${idx}`,
-        productId: cartItem.product.id,
-        variantId: cartItem.variant.id,
-        productNameSnapshot: cartItem.product.name,
-        variantNameSnapshot: cartItem.variant.name,
-        unitPriceCents: cartItem.unitPriceCents,
+      // 4. STEP B: Insert Sale Items
+      const saleItemsRows = payload.items.map((cartItem, idx) => ({
+        id: `sitem-${Date.now()}-${idx}-${Math.random().toString(36).substr(2, 3)}`,
+        sale_id: saleId,
+        product_id: cartItem.product.id,
+        variant_id: cartItem.variant.id,
+        product_name_snapshot: cartItem.product.name,
+        variant_name_snapshot: cartItem.variant.name,
+        unit_price_cents: cartItem.unitPriceCents,
         quantity: cartItem.quantity,
-        subtotalCents: cartItem.totalPriceCents,
-        modifiers: cartItem.selectedModifiers.map((m, mIdx) => ({
-          id: `smod-${idx}-${mIdx}`,
-          modifierNameSnapshot: m.name,
-          priceCents: m.priceCents
-        })),
-        notes: cartItem.notes
-      })),
-      createdAt: now.toISOString()
-    };
+        subtotal_cents: cartItem.totalPriceCents,
+        notes: cartItem.notes || (cartItem.selectedModifiers.length > 0 
+          ? cartItem.selectedModifiers.map(m => m.name).join(', ') 
+          : null)
+      }));
 
-    return { sale: createdSale, inventoryWarnings };
+      const { error: itemsErr } = await supabase.from('sale_items').insert(saleItemsRows);
+      if (itemsErr) {
+        // Rollback sale
+        await supabase.from('sales').delete().eq('id', saleId);
+        throw new Error(`Checkout failed writing sale items: ${itemsErr.message}. Order rolled back.`);
+      }
+
+      // 5. STEP C: Inventory Deductions via Recipes
+      const inventoryWarnings: string[] = [];
+      const itemDeductions: Record<string, { deduction: number; itemName: string }> = {};
+
+      for (const cartItem of payload.items) {
+        const recipes = cartItem.product.recipes?.[cartItem.variant.id] || [];
+        for (const ingredient of recipes) {
+          if (!itemDeductions[ingredient.inventoryItemId]) {
+            itemDeductions[ingredient.inventoryItemId] = {
+              deduction: 0,
+              itemName: ingredient.itemName
+            };
+          }
+          itemDeductions[ingredient.inventoryItemId].deduction += ingredient.quantityRequired * cartItem.quantity;
+        }
+      }
+
+      // Apply inventory deductions and record movements in Supabase
+      for (const [invId, { deduction, itemName }] of Object.entries(itemDeductions)) {
+        const currentItem = this.state.inventoryItems.find(i => i.id === invId);
+        const currentStock = currentItem ? currentItem.currentStock : 0;
+        const newStock = Math.max(0, currentStock - deduction);
+
+        if (currentItem && newStock < currentItem.minThreshold) {
+          inventoryWarnings.push(`Low stock alert: ${itemName} (${newStock.toFixed(1)} ${currentItem.unit} remaining)`);
+        }
+
+        // Update inventory stock in Supabase
+        const { error: stockErr } = await supabase
+          .from('inventory_items')
+          .update({
+            current_stock: newStock,
+            updated_at: now.toISOString()
+          })
+          .eq('id', invId);
+
+        if (stockErr) {
+          console.warn(`Notice: Failed updating stock for ${itemName}:`, stockErr.message);
+        }
+
+        // Record inventory movement in Supabase
+        await supabase.from('inventory_movements').insert({
+          id: 'mov-' + Date.now() + '-' + Math.random().toString(36).substr(2, 4),
+          inventory_item_id: invId,
+          type: 'sale',
+          quantity_delta: -deduction,
+          balance_after: newStock,
+          reference_id: saleId,
+          notes: `Deducted for Order ${orderNumber}`,
+          created_by: currentUser.fullName,
+          created_at: now.toISOString()
+        });
+      }
+
+      // Also record in local database cache without double-processing
+      const createdSale = this.state.sales.find(s => s.id === saleId) || {
+        id: saleId,
+        orderNumber,
+        shiftId: activeShift ? activeShift.id : undefined,
+        cashierId: currentUser.id,
+        cashierName: currentUser.fullName,
+        orderType: payload.orderType,
+        customerName: payload.customerName,
+        customerNotes: payload.customerNotes,
+        subtotalCents,
+        discountCents,
+        discountLabel: payload.discountLabel,
+        taxCents,
+        totalCents,
+        paymentStatus: 'paid' as const,
+        payment: {
+          id: 'pay-' + saleId,
+          method: payload.paymentMethod,
+          amountCents: totalCents,
+          tenderedCents: payload.tenderedCents,
+          changeCents,
+          referenceNumber: payload.referenceNumber,
+          processedAt: now.toISOString()
+        },
+        items: payload.items.map((cartItem, idx) => ({
+          id: `sitem-${idx}`,
+          productId: cartItem.product.id,
+          variantId: cartItem.variant.id,
+          productNameSnapshot: cartItem.product.name,
+          variantNameSnapshot: cartItem.variant.name,
+          unitPriceCents: cartItem.unitPriceCents,
+          quantity: cartItem.quantity,
+          subtotalCents: cartItem.totalPriceCents,
+          modifiers: cartItem.selectedModifiers.map((m, mIdx) => ({
+            id: `smod-${idx}-${mIdx}`,
+            modifierNameSnapshot: m.name,
+            priceCents: m.priceCents
+          })),
+          notes: cartItem.notes
+        })),
+        createdAt: now.toISOString()
+      };
+
+      db.recordSyncedSale(createdSale);
+
+      // 6. Reload fresh data from Supabase to guarantee all terminals stay in sync
+      await this.loadAllData();
+
+      return { sale: createdSale, inventoryWarnings };
+    } catch (err) {
+      console.warn('Cloud checkout encountered error, falling back to local database:', err);
+      const localResult = db.checkoutSale(payload);
+      this.loadOfflineData();
+      return localResult;
+    }
   }
 
   /**
-   * Adjusts stock in Supabase directly
+   * Adjusts stock in Supabase directly with offline fallback
    */
   public async adjustInventoryStock(
     itemId: string,
@@ -814,10 +1091,6 @@ class DataService {
     delta: number,
     notes: string
   ): Promise<void> {
-    if (!isSupabaseConfigured() || !supabase) {
-      throw new Error('Supabase is not configured.');
-    }
-
     const item = this.state.inventoryItems.find(i => i.id === itemId);
     if (!item) throw new Error('Inventory item not found.');
 
@@ -825,98 +1098,109 @@ class DataService {
     const currentUser = this.getCurrentUser();
     const now = new Date().toISOString();
 
-    const { error: stockErr } = await supabase
-      .from('inventory_items')
-      .update({
-        current_stock: Math.round(newStock * 100) / 100,
-        updated_at: now
-      })
-      .eq('id', itemId);
+    if (isSupabaseConfigured() && supabase) {
+      try {
+        const { error: stockErr } = await supabase
+          .from('inventory_items')
+          .update({
+            current_stock: Math.round(newStock * 100) / 100,
+            updated_at: now
+          })
+          .eq('id', itemId);
 
-    if (stockErr) throw new Error(`Failed to update stock: ${stockErr.message}`);
+        if (!stockErr) {
+          await supabase.from('inventory_movements').insert({
+            id: 'mov-' + Date.now(),
+            inventory_item_id: itemId,
+            type,
+            quantity_delta: delta,
+            balance_after: newStock,
+            notes,
+            created_by: currentUser.fullName,
+            created_at: now
+          });
+        }
+      } catch (e) {
+        console.warn('Notice: Supabase stock adjust exception, logging locally:', e);
+      }
+    }
 
-    await supabase.from('inventory_movements').insert({
-      id: 'mov-' + Date.now(),
-      inventory_item_id: itemId,
-      type,
-      quantity_delta: delta,
-      balance_after: newStock,
-      notes,
-      created_by: currentUser.fullName,
-      created_at: now
-    });
-
+    db.adjustInventoryStock(itemId, type, delta, notes);
     await this.loadAllData();
   }
 
   /**
-   * Saves an inventory item to Supabase
+   * Saves an inventory item to Supabase and local database
    */
   public async saveInventoryItem(item: InventoryItem): Promise<void> {
-    if (!isSupabaseConfigured() || !supabase) {
-      throw new Error('Supabase is not configured.');
+    if (isSupabaseConfigured() && supabase) {
+      try {
+        const { error } = await supabase.from('inventory_items').upsert({
+          id: item.id,
+          sku: item.sku || null,
+          name: item.name.trim(),
+          unit: item.unit,
+          current_stock: item.currentStock,
+          min_threshold: item.minThreshold,
+          cost_per_unit_cents: item.costPerUnitCents,
+          updated_at: new Date().toISOString()
+        });
+        if (error) {
+          console.warn('Notice: Supabase inventory item save notice:', error.message);
+        }
+      } catch (e) {
+        console.warn('Notice: Supabase inventory save exception:', e);
+      }
     }
 
-    const { error } = await supabase.from('inventory_items').upsert({
-      id: item.id,
-      sku: item.sku || null,
-      name: item.name.trim(),
-      unit: item.unit,
-      current_stock: item.currentStock,
-      min_threshold: item.minThreshold,
-      cost_per_unit_cents: item.costPerUnitCents,
-      updated_at: new Date().toISOString()
-    });
-
-    if (error) throw new Error(`Failed to save inventory item: ${error.message}`);
+    db.saveInventoryItem(item);
     await this.loadAllData();
   }
 
   /**
-   * Opens cashier shift in Supabase
+   * Opens cashier shift in Supabase and local database
    */
   public async openShift(openingCashCents: number, notes?: string): Promise<CashierShift> {
-    if (!isSupabaseConfigured() || !supabase) {
-      throw new Error('Supabase is not configured.');
-    }
-
     const currentUser = this.getCurrentUser();
     const shiftId = 'shift-' + Date.now();
     const now = new Date().toISOString();
 
-    const { error: sErr } = await supabase.from('cashier_shifts').insert({
-      id: shiftId,
-      user_id: currentUser.id,
-      opening_cash_cents: openingCashCents,
-      notes: notes || null,
-      status: 'open',
-      opened_at: now
-    });
+    if (isSupabaseConfigured() && supabase) {
+      try {
+        const { error: sErr } = await supabase.from('cashier_shifts').insert({
+          id: shiftId,
+          user_id: currentUser.id,
+          opening_cash_cents: openingCashCents,
+          notes: notes || null,
+          status: 'open',
+          opened_at: now
+        });
 
-    if (sErr) throw new Error(`Failed to open shift: ${sErr.message}`);
+        if (!sErr) {
+          await supabase.from('cash_movements').insert({
+            id: 'cm-' + Date.now(),
+            shift_id: shiftId,
+            user_id: currentUser.id,
+            type: 'cash_in',
+            amount_cents: openingCashCents,
+            reason: 'Shift Opening Cash Float',
+            created_at: now
+          });
+        }
+      } catch (e) {
+        console.warn('Notice: Supabase openShift exception, opening locally:', e);
+      }
+    }
 
-    await supabase.from('cash_movements').insert({
-      id: 'cm-' + Date.now(),
-      shift_id: shiftId,
-      user_id: currentUser.id,
-      type: 'cash_in',
-      amount_cents: openingCashCents,
-      reason: 'Shift Opening Cash Float',
-      created_at: now
-    });
-
+    const localShift = db.openShift(openingCashCents, notes);
     await this.loadAllData();
-    return this.state.activeShift!;
+    return this.state.activeShift || localShift;
   }
 
   /**
-   * Closes cashier shift in Supabase
+   * Closes cashier shift in Supabase and local database with comprehensive reconciliation
    */
   public async closeShift(actualCashCents: number, closingNotes?: string): Promise<CashierShift> {
-    if (!isSupabaseConfigured() || !supabase) {
-      throw new Error('Supabase is not configured.');
-    }
-
     const activeShift = this.state.activeShift;
     if (!activeShift) throw new Error('No active shift to close.');
 
@@ -927,86 +1211,111 @@ class DataService {
       .reduce((sum, s) => sum + s.totalCents, 0);
 
     const shiftMovements = this.state.cashMovements.filter(cm => cm.shiftId === activeShift.id);
-    const cashInTotal = shiftMovements.filter(cm => cm.type === 'cash_in').reduce((sum, cm) => sum + cm.amountCents, 0);
-    const cashOutTotal = shiftMovements.filter(cm => cm.type === 'cash_out' || cm.type === 'drop').reduce((sum, cm) => sum + cm.amountCents, 0);
+    const cashInTotal = shiftMovements
+      .filter(cm => cm.type === 'cash_in' && cm.reason !== 'Shift Opening Cash Float')
+      .reduce((sum, cm) => sum + cm.amountCents, 0);
+    const cashOutTotal = shiftMovements
+      .filter(cm => cm.type === 'cash_out' || cm.type === 'drop')
+      .reduce((sum, cm) => sum + cm.amountCents, 0);
 
-    const expectedCashCents = activeShift.openingCashCents + cashSalesCents + (cashInTotal - activeShift.openingCashCents) - cashOutTotal;
+    // Subtract store petty cash expenses paid from cash drawer
+    const shiftExpenses = this.state.expenses.filter(e => e.shiftId === activeShift.id);
+    const cashExpensesTotal = shiftExpenses.reduce((sum, e) => sum + e.amountCents, 0);
+
+    const expectedCashCents = activeShift.openingCashCents + cashSalesCents + cashInTotal - cashOutTotal - cashExpensesTotal;
     const cashVarianceCents = actualCashCents - expectedCashCents;
     const now = new Date().toISOString();
 
-    const { error } = await supabase
-      .from('cashier_shifts')
-      .update({
-        closing_cash_cents: actualCashCents,
-        expected_cash_cents: expectedCashCents,
-        actual_cash_cents: actualCashCents,
-        cash_variance_cents: cashVarianceCents,
-        notes: closingNotes || null,
-        status: 'closed',
-        closed_at: now
-      })
-      .eq('id', activeShift.id);
+    if (isSupabaseConfigured() && supabase) {
+      try {
+        await supabase
+          .from('cashier_shifts')
+          .update({
+            closing_cash_cents: actualCashCents,
+            expected_cash_cents: expectedCashCents,
+            actual_cash_cents: actualCashCents,
+            cash_variance_cents: cashVarianceCents,
+            notes: closingNotes || null,
+            status: 'closed',
+            closed_at: now
+          })
+          .eq('id', activeShift.id);
+      } catch (e) {
+        console.warn('Notice: Supabase closeShift exception, closing locally:', e);
+      }
+    }
 
-    if (error) throw new Error(`Failed to close shift: ${error.message}`);
-
+    const localShift = db.closeShift(actualCashCents, closingNotes);
     await this.loadAllData();
-    return this.state.shifts.find(s => s.id === activeShift.id)!;
+    return this.state.shifts.find(s => s.id === activeShift.id) || localShift!;
   }
 
   /**
-   * Records cash movement in Supabase
+   * Records cash movement in Supabase and local database
    */
   public async addCashMovement(type: 'cash_in' | 'cash_out' | 'drop', amountCents: number, reason: string): Promise<void> {
-    if (!isSupabaseConfigured() || !supabase) {
-      throw new Error('Supabase is not configured.');
-    }
-
     const activeShift = this.state.activeShift;
     if (!activeShift) throw new Error('Cannot move cash without an open shift.');
 
     const currentUser = this.getCurrentUser();
-    const { error } = await supabase.from('cash_movements').insert({
-      id: 'cm-' + Date.now(),
-      shift_id: activeShift.id,
-      user_id: currentUser.id,
-      type,
-      amount_cents: amountCents,
-      reason,
-      created_at: new Date().toISOString()
-    });
 
-    if (error) throw new Error(`Failed to record cash movement: ${error.message}`);
+    if (isSupabaseConfigured() && supabase) {
+      try {
+        await supabase.from('cash_movements').insert({
+          id: 'cm-' + Date.now(),
+          shift_id: activeShift.id,
+          user_id: currentUser.id,
+          type,
+          amount_cents: amountCents,
+          reason,
+          created_at: new Date().toISOString()
+        });
+      } catch (e) {
+        console.warn('Notice: Supabase cash movement exception, recording locally:', e);
+      }
+    }
+
+    db.recordCashMovement(type, amountCents, reason);
     await this.loadAllData();
   }
 
   /**
-   * Records expense in Supabase
+   * Records expense in Supabase and local database
    */
   public async recordExpense(expense: Omit<Expense, 'id' | 'spentAt'>): Promise<void> {
-    if (!isSupabaseConfigured() || !supabase) {
-      throw new Error('Supabase is not configured.');
-    }
-
     const activeShift = this.state.activeShift;
     const currentUser = this.getCurrentUser();
     const id = 'exp-' + Date.now();
     const now = new Date().toISOString();
 
-    const { error } = await supabase.from('expenses').insert({
-      id,
-      category_id: expense.categoryId,
-      category_name: expense.categoryName,
-      amount_cents: expense.amountCents,
-      description: expense.description,
-      payee: expense.payee || null,
-      receipt_reference: expense.receiptReference || null,
-      shift_id: activeShift ? activeShift.id : null,
-      user_id: currentUser.id,
-      user_name: currentUser.fullName,
-      created_at: now
-    });
+    if (isSupabaseConfigured() && supabase) {
+      try {
+        await supabase.from('expenses').insert({
+          id,
+          category_id: expense.categoryId,
+          category_name: expense.categoryName,
+          amount_cents: expense.amountCents,
+          description: expense.description,
+          payee: expense.payee || null,
+          receipt_reference: expense.receiptReference || null,
+          shift_id: activeShift ? activeShift.id : null,
+          user_id: currentUser.id,
+          user_name: currentUser.fullName,
+          created_at: now
+        });
+      } catch (e) {
+        console.warn('Notice: Supabase expense exception, recording locally:', e);
+      }
+    }
 
-    if (error) throw new Error(`Failed to record expense: ${error.message}`);
+    db.addExpense({
+      categoryId: expense.categoryId,
+      categoryName: expense.categoryName,
+      amountCents: expense.amountCents,
+      payee: expense.payee,
+      description: expense.description,
+      receiptReference: expense.receiptReference
+    });
     await this.loadAllData();
   }
 
@@ -1014,60 +1323,65 @@ class DataService {
    * Refunds a sale in Supabase and restocks ingredients
    */
   public async refundSale(saleId: string, reason: string): Promise<void> {
-    if (!isSupabaseConfigured() || !supabase) {
-      throw new Error('Supabase is not configured.');
-    }
-
     const sale = this.state.sales.find(s => s.id === saleId);
     if (!sale) throw new Error('Sale record not found.');
 
     const currentUser = this.getCurrentUser();
     const now = new Date().toISOString();
 
-    const { error: sErr } = await supabase
-      .from('sales')
-      .update({ payment_status: 'refunded' })
-      .eq('id', saleId);
-
-    if (sErr) throw new Error(`Failed to refund sale: ${sErr.message}`);
-
-    // Restock ingredients for items in sale
-    for (const item of sale.items) {
-      const product = this.state.products.find(p => p.id === item.productId);
-      if (!product) continue;
-      const recipe = product.recipes?.[item.variantId] || [];
-
-      for (const ing of recipe) {
-        const invItem = this.state.inventoryItems.find(i => i.id === ing.inventoryItemId);
-        if (!invItem) continue;
-
-        const restockQty = ing.quantityRequired * item.quantity;
-        const newStock = invItem.currentStock + restockQty;
-
+    if (isSupabaseConfigured() && supabase) {
+      try {
         await supabase
-          .from('inventory_items')
-          .update({ current_stock: newStock, updated_at: now })
-          .eq('id', invItem.id);
+          .from('sales')
+          .update({ payment_status: 'refunded' })
+          .eq('id', saleId);
 
-        await supabase.from('inventory_movements').insert({
-          id: 'mov-' + Date.now() + '-' + Math.random().toString(36).substr(2, 4),
-          inventory_item_id: invItem.id,
-          type: 'refund',
-          quantity_delta: restockQty,
-          balance_after: newStock,
-          reference_id: saleId,
-          notes: `Restocked from refunded order ${sale.orderNumber}`,
-          created_by: currentUser.fullName,
-          created_at: now
-        });
+        // Restock ingredients for items in sale
+        for (const item of sale.items) {
+          const product = this.state.products.find(p => p.id === item.productId);
+          if (!product) continue;
+          const recipe = product.recipes?.[item.variantId] || [];
+
+          for (const ing of recipe) {
+            const invItem = this.state.inventoryItems.find(i => i.id === ing.inventoryItemId);
+            if (!invItem) continue;
+
+            const restockQty = ing.quantityRequired * item.quantity;
+            const newStock = invItem.currentStock + restockQty;
+
+            await supabase
+              .from('inventory_items')
+              .update({ current_stock: newStock, updated_at: now })
+              .eq('id', invItem.id);
+
+            await supabase.from('inventory_movements').insert({
+              id: 'mov-' + Date.now() + '-' + Math.random().toString(36).substr(2, 4),
+              inventory_item_id: invItem.id,
+              type: 'refund',
+              quantity_delta: restockQty,
+              balance_after: newStock,
+              reference_id: saleId,
+              notes: `Restocked from refunded order ${sale.orderNumber}`,
+              created_by: currentUser.fullName,
+              created_at: now
+            });
+          }
+        }
+      } catch (e) {
+        console.warn('Notice: Supabase refund sale exception, updating locally:', e);
       }
     }
 
+    // Local database refund
+    const targetSale = db.getState().sales.find(s => s.id === saleId);
+    if (targetSale) {
+      targetSale.paymentStatus = 'refunded';
+    }
     await this.loadAllData();
   }
 
   /**
-   * Saves or updates a staff user account in Supabase
+   * Saves or updates a staff user account in Supabase and local storage
    */
   public async saveUser(user: {
     id?: string;
@@ -1077,10 +1391,6 @@ class DataService {
     pinHash: string;
     status?: 'active' | 'inactive';
   }): Promise<User> {
-    if (!isSupabaseConfigured() || !supabase) {
-      throw new Error('Supabase client is not configured.');
-    }
-
     const cleanUsername = user.username.toLowerCase().trim();
     if (!cleanUsername) throw new Error('Username is required.');
     if (!user.fullName.trim()) throw new Error('Full name is required.');
@@ -1091,47 +1401,61 @@ class DataService {
     const userId = user.id || 'usr-' + Date.now() + '-' + Math.random().toString(36).substr(2, 4);
     const now = new Date().toISOString();
 
-    const { error } = await supabase.from('users').upsert({
+    const userObj: User = {
       id: userId,
       username: cleanUsername,
-      full_name: user.fullName.trim(),
+      fullName: user.fullName.trim(),
       role: user.role,
-      pin_hash: user.pinHash,
+      pinHash: user.pinHash,
       status: user.status || 'active',
-      created_at: now,
-      updated_at: now
-    });
+      createdAt: now
+    };
 
-    if (error) {
-      if (error.message.includes('unique') || error.message.includes('duplicate')) {
-        throw new Error(`Username "@${cleanUsername}" is already taken. Please choose another.`);
+    if (isSupabaseConfigured() && supabase) {
+      try {
+        const { error } = await supabase.from('users').upsert({
+          id: userId,
+          username: cleanUsername,
+          full_name: user.fullName.trim(),
+          role: user.role,
+          pin_hash: user.pinHash,
+          status: user.status || 'active',
+          created_at: now,
+          updated_at: now
+        });
+
+        if (error) {
+          if (error.message.includes('unique') || error.message.includes('duplicate')) {
+            throw new Error(`Username "@${cleanUsername}" is already taken. Please choose another.`);
+          }
+          console.warn('Notice: Supabase saveUser error, saving locally:', error.message);
+        }
+      } catch (e) {
+        if ((e as Error).message.includes('already taken')) {
+          throw e;
+        }
+        console.warn('Notice: Supabase user save exception:', e);
       }
-      throw new Error(`Failed to save user account: ${error.message}`);
+    }
+
+    // Persist in local storage database
+    const localUsers = db.getState().users;
+    const existingIdx = localUsers.findIndex(u => u.id === userId);
+    if (existingIdx !== -1) {
+      localUsers[existingIdx] = userObj;
+    } else {
+      localUsers.push(userObj);
     }
 
     await this.loadAllData();
     const saved = this.state.users.find(u => u.id === userId);
-    return (
-      saved || {
-        id: userId,
-        username: cleanUsername,
-        fullName: user.fullName.trim(),
-        role: user.role,
-        pinHash: user.pinHash,
-        status: user.status || 'active',
-        createdAt: now
-      }
-    );
+    return saved || userObj;
   }
 
   /**
-   * Deletes or deactivates a user account in Supabase
+   * Deletes or deactivates a user account in Supabase and local storage
    */
   public async deleteUser(userId: string): Promise<void> {
-    if (!isSupabaseConfigured() || !supabase) {
-      throw new Error('Supabase client is not configured.');
-    }
-
     if (this.state.currentUserId === userId) {
       throw new Error('You cannot delete your own active session account.');
     }
@@ -1142,11 +1466,20 @@ class DataService {
       throw new Error('Cannot delete the last remaining administrator account.');
     }
 
-    const { error } = await supabase.from('users').delete().eq('id', userId);
-    if (error) {
-      throw new Error(`Failed to delete user: ${error.message}`);
+    if (isSupabaseConfigured() && supabase) {
+      try {
+        const { error } = await supabase.from('users').delete().eq('id', userId);
+        if (error) {
+          console.warn('Notice: Supabase delete user notice:', error.message);
+        }
+      } catch (e) {
+        console.warn('Notice: Supabase deleteUser exception:', e);
+      }
     }
 
+    const currentDb = db.getState();
+    currentDb.users = currentDb.users.filter(u => u.id !== userId);
+    this.state.users = this.state.users.filter(u => u.id !== userId);
     await this.loadAllData();
   }
 
@@ -1172,6 +1505,7 @@ class DataService {
     } else {
       this.state.suppliers.push(fullSupplier);
     }
+    db.saveSupplier(fullSupplier);
 
     // Try persisting to Supabase if table exists
     if (isSupabaseConfigured() && supabase) {
@@ -1216,6 +1550,7 @@ class DataService {
     };
 
     this.state.purchases.unshift(newPurchase);
+    db.recordPurchase(purchase);
 
     // If marked received, immediately update inventory stock and movements in Supabase
     if (newPurchase.status === 'received' && isSupabaseConfigured() && supabase) {

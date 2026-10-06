@@ -59,14 +59,32 @@ export function parsePHPAmountToCents(amount: number): number {
   return Math.round(amount * 100);
 }
 
-// Clean Initial User: Only 1 root administrator
+// Initial Staff: Root Administrator, Store Manager, and Front Cashier
 const initialUsers: User[] = [
   {
     id: 'usr-admin',
-    username: 'admin',
-    fullName: 'System Administrator',
+    username: 'juan.admin',
+    fullName: 'Juan Dela Cruz',
     role: 'admin',
     pinHash: '1234',
+    status: 'active',
+    createdAt: new Date().toISOString()
+  },
+  {
+    id: 'usr-manager',
+    username: 'pedro.mgr',
+    fullName: 'Pedro Reyes',
+    role: 'manager',
+    pinHash: '2345',
+    status: 'active',
+    createdAt: new Date().toISOString()
+  },
+  {
+    id: 'usr-cashier',
+    username: 'maria.pos',
+    fullName: 'Maria Santos',
+    role: 'cashier',
+    pinHash: '3456',
     status: 'active',
     createdAt: new Date().toISOString()
   }
@@ -171,6 +189,13 @@ export class LocalStorageDB {
       if (raw) {
         const parsed = JSON.parse(raw);
         if (parsed && parsed.version === DB_VERSION) {
+          // Ensure all 3 standard role users exist for seamless role testing
+          const existingUserIds = new Set((parsed.users || []).map((u: User) => u.id));
+          const missingUsers = initialUsers.filter(u => !existingUserIds.has(u.id));
+          if (missingUsers.length > 0) {
+            parsed.users = [...(parsed.users || []), ...missingUsers];
+            this.persist(parsed);
+          }
           return parsed;
         }
       }
@@ -520,6 +545,17 @@ export class LocalStorageDB {
     return { sale, inventoryWarnings };
   }
 
+  // Record an externally processed sale (from Supabase) into local state cache without double-processing
+  public recordSyncedSale(sale: Sale): void {
+    const existingIdx = this.state.sales.findIndex(s => s.id === sale.id);
+    if (existingIdx !== -1) {
+      this.state.sales[existingIdx] = sale;
+    } else {
+      this.state.sales.unshift(sale);
+    }
+    this.persist(this.state);
+  }
+
   // REFUND / VOID TRANSACTION
   public refundSale(saleId: string, reason: string, managerPin: string, restockInventory: boolean): RefundRecord | null {
     const manager = this.verifyPin(managerPin, ['admin', 'manager']);
@@ -673,14 +709,27 @@ export class LocalStorageDB {
   }
 
   // Purchases & Suppliers
+  public saveSupplier(supplier: Supplier): Supplier {
+    const existingIdx = this.state.suppliers.findIndex(s => s.id === supplier.id);
+    if (existingIdx !== -1) {
+      this.state.suppliers[existingIdx] = supplier;
+    } else {
+      this.state.suppliers.push(supplier);
+    }
+    this.persist(this.state);
+    return supplier;
+  }
+
   public addSupplier(supplier: Omit<Supplier, 'id'>): Supplier {
     const newSupplier: Supplier = {
       ...supplier,
       id: 'sup-' + Date.now()
     };
-    this.state.suppliers.push(newSupplier);
+    return this.saveSupplier(newSupplier);
+  }
+
+  public persistState(): void {
     this.persist(this.state);
-    return newSupplier;
   }
 
   public recordPurchase(purchase: Omit<Purchase, 'id' | 'purchasedAt'>): Purchase {

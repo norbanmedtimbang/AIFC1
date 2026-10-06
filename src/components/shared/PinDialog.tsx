@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Lock, Delete, X, AlertCircle } from 'lucide-react';
 import { db } from '../../services/storage';
+import { dataService } from '../../services/dataService';
 import { User, UserRole } from '../../types';
 
 interface PinDialogProps {
@@ -23,31 +24,11 @@ export const PinDialog: React.FC<PinDialogProps> = ({
   const [pin, setPin] = useState('');
   const [error, setError] = useState<string | null>(null);
 
-  if (!isOpen) return null;
+  const verify = useCallback((codeToVerify: string) => {
+    const verifiedUser =
+      dataService.verifyPin(codeToVerify, allowedRoles) ||
+      db.verifyPin(codeToVerify, allowedRoles);
 
-  const handleDigit = (digit: string) => {
-    if (pin.length < 4) {
-      const nextPin = pin + digit;
-      setPin(nextPin);
-      setError(null);
-      if (nextPin.length === 4) {
-        verify(nextPin);
-      }
-    }
-  };
-
-  const handleDelete = () => {
-    setPin(prev => prev.slice(0, -1));
-    setError(null);
-  };
-
-  const handleClear = () => {
-    setPin('');
-    setError(null);
-  };
-
-  const verify = (codeToVerify: string) => {
-    const verifiedUser = db.verifyPin(codeToVerify, allowedRoles);
     if (verifiedUser) {
       setPin('');
       setError(null);
@@ -56,7 +37,54 @@ export const PinDialog: React.FC<PinDialogProps> = ({
       setError(`Invalid PIN or insufficient role permissions (${allowedRoles.join('/')} required).`);
       setPin('');
     }
-  };
+  }, [allowedRoles, onSuccess]);
+
+  const handleDigit = useCallback((digit: string) => {
+    setPin(prev => {
+      if (prev.length < 4) {
+        const nextPin = prev + digit;
+        setError(null);
+        if (nextPin.length === 4) {
+          setTimeout(() => verify(nextPin), 50);
+        }
+        return nextPin;
+      }
+      return prev;
+    });
+  }, [verify]);
+
+  const handleDelete = useCallback(() => {
+    setPin(prev => prev.slice(0, -1));
+    setError(null);
+  }, []);
+
+  const handleClear = useCallback(() => {
+    setPin('');
+    setError(null);
+  }, []);
+
+  // Keyboard navigation for PIN keypad
+  useEffect(() => {
+    if (!isOpen) return;
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key >= '0' && e.key <= '9') {
+        e.preventDefault();
+        handleDigit(e.key);
+      } else if (e.key === 'Backspace') {
+        e.preventDefault();
+        handleDelete();
+      } else if (e.key === 'Escape') {
+        e.preventDefault();
+        onClose();
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isOpen, handleDigit, handleDelete, onClose]);
+
+  if (!isOpen) return null;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-[2px] p-4 select-none animate-backdrop">

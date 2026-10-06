@@ -37,6 +37,8 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
   const [saleToRefund, setSaleToRefund] = useState<Sale | null>(null);
   const [refundReason, setRefundReason] = useState('Customer changed mind / incorrect drink');
   const [isPinDialogOpen, setIsPinDialogOpen] = useState(false);
+  const [refundError, setRefundError] = useState<string | null>(null);
+  const [isRefunding, setIsRefunding] = useState(false);
 
   // Filtered sales
   const filteredSales = useMemo(() => {
@@ -55,14 +57,17 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
   }, [sales, searchQuery, paymentFilter, statusFilter]);
 
   const handleStartRefund = (sale: Sale) => {
+    setRefundError(null);
     setSaleToRefund(sale);
     setIsPinDialogOpen(true);
   };
 
   const handleAuthorizedRefund = async (manager: User) => {
     setIsPinDialogOpen(false);
-    if (!saleToRefund) return;
+    if (!saleToRefund || isRefunding) return;
 
+    setIsRefunding(true);
+    setRefundError(null);
     try {
       await dataService.refundSale(
         saleToRefund.id,
@@ -73,7 +78,9 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
       setInspectedSale(null);
       onRefreshData();
     } catch (err) {
-      alert('Refund failed: ' + (err as Error).message);
+      setRefundError('Refund failed: ' + (err as Error).message);
+    } finally {
+      setIsRefunding(false);
     }
   };
 
@@ -85,6 +92,21 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
 
   return (
     <div className="p-6 md:p-8 space-y-6 max-w-6xl mx-auto overflow-y-auto">
+      {/* Refund Error Banner */}
+      {refundError && (
+        <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-xs text-rose-700 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <span className="font-semibold">{refundError}</span>
+          </div>
+          <button
+            onClick={() => setRefundError(null)}
+            className="p-1 text-rose-500 hover:text-rose-700 cursor-pointer"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      )}
+
       {/* Top Header */}
       <div className="flex flex-col sm:flex-row sm:items-baseline justify-between gap-2 border-b border-[#E8E2D9] pb-4">
         <div>

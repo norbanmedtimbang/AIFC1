@@ -10,9 +10,11 @@ import {
   BarChart3,
   Users,
   Settings,
-  Lock
+  Lock,
+  LogOut
 } from 'lucide-react';
 import { User, CashierShift } from '../../types';
+import { hasModuleAccess, ROLE_PERMISSIONS } from '../../services/rbac';
 
 export type NavModule =
   | 'dashboard'
@@ -45,17 +47,28 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onSwitchUser,
   onLockTerminal
 }) => {
-  const primaryNav: { id: NavModule; label: string; icon: React.ElementType; badge?: number }[] = [
+  const roleConfig = ROLE_PERMISSIONS[currentUser.role];
+
+  // Full module registry with role-dependent labels
+  const allNavItems: { id: NavModule; label: string; icon: React.ElementType; badge?: number }[] = [
     { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
-    { id: 'pos', label: 'POS', icon: Coffee },
-    { id: 'menu', label: 'Menu', icon: BookOpen },
+    { id: 'pos', label: 'POS Register', icon: Coffee },
+    { id: 'menu', label: 'Menu & Recipes', icon: BookOpen },
     { id: 'inventory', label: 'Inventory', icon: Package, badge: lowStockCount },
     { id: 'purchases', label: 'Purchases', icon: Truck },
     { id: 'orders', label: 'Transactions', icon: Receipt },
     { id: 'expenses', label: 'Expenses', icon: CreditCard },
     { id: 'reports', label: 'Reports', icon: BarChart3 },
-    { id: 'staff', label: 'Staff', icon: Users }
+    {
+      id: 'staff',
+      label: currentUser.role === 'cashier' ? 'Cashier Shifts' : 'Staff & Shifts',
+      icon: Users
+    }
   ];
+
+  // Automatic RBAC filtering: only show authorized modules
+  const visibleNav = allNavItems.filter(item => hasModuleAccess(currentUser.role, item.id));
+  const canAccessSettings = hasModuleAccess(currentUser.role, 'settings');
 
   return (
     <aside className="w-56 bg-[#FBF9F5] text-[#292929] flex flex-col h-screen shrink-0 border-r border-[#E8E2D9] select-none">
@@ -86,7 +99,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
       {/* Navigation */}
       <nav className="flex-1 overflow-y-auto px-2.5 py-3 space-y-0.5">
-        {primaryNav.map(item => {
+        {visibleNav.map(item => {
           const Icon = item.icon;
           const isActive = currentModule === item.id;
           return (
@@ -123,33 +136,38 @@ export const Sidebar: React.FC<SidebarProps> = ({
           );
         })}
 
-        <div className="py-2.5 px-1">
-          <div className="h-px bg-[#E8E2D9]" />
-        </div>
+        {canAccessSettings && (
+          <>
+            <div className="py-2.5 px-1">
+              <div className="h-px bg-[#E8E2D9]" />
+            </div>
 
-        <button
-          onClick={() => onSelectModule('settings')}
-          className={`w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-[12.5px] font-medium transition-all duration-150 cursor-pointer ${
-            currentModule === 'settings'
-              ? 'bg-[#3B2925] text-white shadow-[0_2px_8px_rgba(59,41,37,0.18)]'
-              : 'text-[#6E6862] hover:bg-[#EFE9DF]/80 hover:text-[#292929]'
-          }`}
-        >
-          <Settings
-            className={`w-[15px] h-[15px] shrink-0 ${
-              currentModule === 'settings' ? 'text-white' : 'text-[#9B948C]'
-            }`}
-            strokeWidth={currentModule === 'settings' ? 2.1 : 1.75}
-          />
-          <span className="tracking-tight">Settings</span>
-        </button>
+            <button
+              onClick={() => onSelectModule('settings')}
+              className={`w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-[12.5px] font-medium transition-all duration-150 cursor-pointer ${
+                currentModule === 'settings'
+                  ? 'bg-[#3B2925] text-white shadow-[0_2px_8px_rgba(59,41,37,0.18)]'
+                  : 'text-[#6E6862] hover:bg-[#EFE9DF]/80 hover:text-[#292929]'
+              }`}
+            >
+              <Settings
+                className={`w-[15px] h-[15px] shrink-0 ${
+                  currentModule === 'settings' ? 'text-white' : 'text-[#9B948C]'
+                }`}
+                strokeWidth={currentModule === 'settings' ? 2.1 : 1.75}
+              />
+              <span className="tracking-tight">Settings</span>
+            </button>
+          </>
+        )}
       </nav>
 
       {/* User footer */}
       <div className="p-2.5 border-t border-[#E8E2D9] bg-[#F7F3EB]/60">
-        <div className="flex items-center gap-1 rounded-xl p-1.5 hover:bg-[#EFE9DF]/60 transition">
+        <div className="flex items-center gap-1.5 rounded-xl p-1.5 hover:bg-[#EFE9DF]/60 transition">
           <button
             onClick={onSwitchUser}
+            title="Switch User / Log Out"
             className="flex-1 flex items-center gap-2.5 text-left cursor-pointer min-w-0"
           >
             <div className="w-8 h-8 rounded-xl bg-[#3B2925] text-white flex items-center justify-center text-[11px] font-semibold shrink-0 shadow-[0_1px_3px_rgba(59,41,37,0.15)]">
@@ -159,15 +177,21 @@ export const Sidebar: React.FC<SidebarProps> = ({
               <div className="text-[12px] font-semibold text-[#292929] truncate tracking-tight">
                 {currentUser.fullName}
               </div>
-              <div className="text-[10px] text-[#9B948C] capitalize leading-tight">
-                {currentUser.role}
+              <div className="flex items-center gap-1 mt-0.5">
+                <span
+                  className={`text-[9.5px] font-bold uppercase px-1.5 py-0.2 rounded-full tracking-wider ${
+                    roleConfig?.badgeColor || 'bg-stone-200 text-stone-800'
+                  }`}
+                >
+                  {roleConfig?.displayName || currentUser.role}
+                </span>
               </div>
             </div>
           </button>
           <button
             onClick={onLockTerminal}
             title="Lock register"
-            className="p-2 text-[#9B948C] hover:text-[#3B2925] rounded-lg hover:bg-white transition cursor-pointer shrink-0"
+            className="p-1.5 text-[#9B948C] hover:text-[#3B2925] rounded-lg hover:bg-white transition cursor-pointer shrink-0"
           >
             <Lock className="w-3.5 h-3.5" strokeWidth={1.8} />
           </button>

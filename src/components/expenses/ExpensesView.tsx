@@ -1,9 +1,11 @@
 import React, { useState } from 'react';
 import {
   Plus,
-  X
+  X,
+  AlertTriangle,
+  Loader2
 } from 'lucide-react';
-import { Expense, ExpenseCategory, CashierShift } from '../../types';
+import { Expense, ExpenseCategory, CashierShift, User } from '../../types';
 import { formatPHP, parsePHPAmountToCents } from '../../services/storage';
 import { dataService } from '../../services/dataService';
 
@@ -11,6 +13,7 @@ interface ExpensesViewProps {
   expenses: Expense[];
   expenseCategories: ExpenseCategory[];
   activeShift: CashierShift | null;
+  currentUser: User;
   onRefreshData: () => void;
 }
 
@@ -18,6 +21,7 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({
   expenses,
   expenseCategories,
   activeShift,
+  currentUser,
   onRefreshData
 }) => {
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -26,31 +30,45 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({
   const [payee, setPayee] = useState('');
   const [description, setDescription] = useState('');
   const [receiptRef, setReceiptRef] = useState('');
+  const [modalError, setModalError] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const todayStr = new Date().toISOString().slice(0, 10);
   const todayExpenses = expenses.filter(e => e.spentAt.startsWith(todayStr));
   const totalExpensesTodayCents = todayExpenses.reduce((sum, e) => sum + e.amountCents, 0);
 
+  const handleOpenModal = () => {
+    setModalError(null);
+    setAmountInput('');
+    setPayee('');
+    setDescription('');
+    setReceiptRef('');
+    setSelectedCategoryId(expenseCategories[0]?.id || '');
+    setIsModalOpen(true);
+  };
+
   const handleAddExpense = async () => {
+    setModalError(null);
     const amountPHP = parseFloat(amountInput);
     if (isNaN(amountPHP) || amountPHP <= 0) {
-      alert('Please enter a valid expense amount.');
+      setModalError('Please enter a valid expense amount greater than 0.');
       return;
     }
     if (!description.trim() || !payee.trim()) {
-      alert('Please provide a payee and description.');
+      setModalError('Please provide both a payee and description.');
       return;
     }
 
     const cat = expenseCategories.find(c => c.id === selectedCategoryId);
 
+    setIsSubmitting(true);
     try {
       await dataService.recordExpense({
         categoryId: selectedCategoryId,
         categoryName: cat?.name || 'Store Operations',
         shiftId: activeShift ? activeShift.id : undefined,
-        userId: 'usr-admin',
-        userName: 'Staff',
+        userId: currentUser.id,
+        userName: currentUser.fullName,
         amountCents: parsePHPAmountToCents(amountPHP),
         payee: payee.trim(),
         description: description.trim(),
@@ -64,7 +82,9 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({
       setReceiptRef('');
       onRefreshData();
     } catch (err) {
-      alert('Failed to record expense: ' + (err as Error).message);
+      setModalError('Failed to record expense: ' + (err as Error).message);
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -87,7 +107,7 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({
             </span>
           </div>
           <button
-            onClick={() => setIsModalOpen(true)}
+            onClick={handleOpenModal}
             className="px-3.5 py-2 rounded-xl bg-[#3B2925] hover:bg-[#2C1E1A] text-white text-xs font-medium transition flex items-center gap-1.5 shadow-xs cursor-pointer"
           >
             <Plus className="w-3.5 h-3.5" />
@@ -167,6 +187,12 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({
             </div>
 
             <div className="p-5 space-y-3.5 text-xs">
+              {modalError && (
+                <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-xs text-rose-700 flex items-center gap-2">
+                  <AlertTriangle className="w-4 h-4 shrink-0 text-rose-600" />
+                  <span>{modalError}</span>
+                </div>
+              )}
               <div>
                 <label className="text-xs font-medium text-[#292929] block mb-1">
                   Expense Amount (₱) *
@@ -241,15 +267,24 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({
             <div className="p-4 bg-[#FBF9F5] border-t border-[#E8E2D9] flex justify-end gap-2">
               <button
                 onClick={() => setIsModalOpen(false)}
+                disabled={isSubmitting}
                 className="px-4 py-2 rounded-xl text-xs font-medium text-[#6E6862] hover:bg-[#EFE9DF] cursor-pointer"
               >
                 Cancel
               </button>
               <button
                 onClick={handleAddExpense}
-                className="px-4 py-2 rounded-xl text-xs font-medium bg-[#3B2925] text-white hover:bg-[#2C1E1A] cursor-pointer shadow-xs"
+                disabled={isSubmitting}
+                className="px-4 py-2 rounded-xl text-xs font-medium bg-[#3B2925] text-white hover:bg-[#2C1E1A] cursor-pointer shadow-xs disabled:opacity-50 flex items-center gap-1.5"
               >
-                Save Expense
+                {isSubmitting ? (
+                  <>
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    <span>Saving...</span>
+                  </>
+                ) : (
+                  <span>Save Expense</span>
+                )}
               </button>
             </div>
           </div>
