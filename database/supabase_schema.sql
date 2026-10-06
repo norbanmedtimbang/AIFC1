@@ -167,11 +167,48 @@ CREATE TABLE IF NOT EXISTS public.expenses (
     shift_id TEXT REFERENCES public.cashier_shifts(id) ON DELETE SET NULL,
     user_id TEXT NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
     user_name TEXT NOT NULL,
-    amount_cents BIGINT NOT NULL,
+    amount_cents BIGINT NOT NULL CHECK (amount_cents > 0),
     payee TEXT NOT NULL,
     description TEXT NOT NULL,
     receipt_reference TEXT,
     created_at TIMESTAMPTZ DEFAULT TIMEZONE('utc', NOW())
+);
+
+-- 14. SUPPLIERS
+CREATE TABLE IF NOT EXISTS public.suppliers (
+    id TEXT PRIMARY KEY,
+    company_name TEXT NOT NULL,
+    contact_person TEXT,
+    phone TEXT,
+    email TEXT,
+    address TEXT,
+    created_at TIMESTAMPTZ DEFAULT TIMEZONE('utc', NOW())
+);
+
+-- 15. PURCHASES (vendor deliveries / POs)
+CREATE TABLE IF NOT EXISTS public.purchases (
+    id TEXT PRIMARY KEY,
+    supplier_id TEXT NOT NULL REFERENCES public.suppliers(id) ON DELETE RESTRICT,
+    supplier_name TEXT NOT NULL,
+    invoice_number TEXT,
+    status TEXT CHECK (status IN ('pending', 'received', 'cancelled')) NOT NULL DEFAULT 'pending',
+    total_amount_cents BIGINT NOT NULL CHECK (total_amount_cents >= 0),
+    purchased_at TIMESTAMPTZ DEFAULT TIMEZONE('utc', NOW()),
+    received_at TIMESTAMPTZ,
+    recorded_by TEXT REFERENCES public.users(id) ON DELETE SET NULL,
+    notes TEXT
+);
+
+-- 16. PURCHASE LINE ITEMS
+CREATE TABLE IF NOT EXISTS public.purchase_items (
+    id TEXT PRIMARY KEY,
+    purchase_id TEXT NOT NULL REFERENCES public.purchases(id) ON DELETE CASCADE,
+    inventory_item_id TEXT NOT NULL REFERENCES public.inventory_items(id) ON DELETE RESTRICT,
+    item_name TEXT NOT NULL,
+    unit TEXT NOT NULL,
+    quantity NUMERIC(12, 2) NOT NULL CHECK (quantity > 0),
+    unit_cost_cents BIGINT NOT NULL CHECK (unit_cost_cents >= 0),
+    total_cost_cents BIGINT NOT NULL CHECK (total_cost_cents >= 0)
 );
 
 -- ==============================================================================
@@ -190,6 +227,9 @@ ALTER TABLE public.inventory_movements ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.sales ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.sale_items ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.expenses ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.suppliers ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.purchases ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.purchase_items ENABLE ROW LEVEL SECURITY;
 
 -- Allow anon & authenticated roles full access for POS operations
 DO $$ 

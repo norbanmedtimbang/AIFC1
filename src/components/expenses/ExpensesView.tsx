@@ -49,6 +49,8 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({
 
   const handleAddExpense = async () => {
     setModalError(null);
+    if (isSubmitting) return;
+
     const amountPHP = parseFloat(amountInput);
     if (isNaN(amountPHP) || amountPHP <= 0) {
       setModalError('Please enter a valid expense amount greater than 0.');
@@ -58,18 +60,32 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({
       setModalError('Please provide both a payee and description.');
       return;
     }
+    if (!selectedCategoryId) {
+      setModalError('Please select an expense category.');
+      return;
+    }
 
     const cat = expenseCategories.find(c => c.id === selectedCategoryId);
+    if (!cat) {
+      setModalError('Selected expense category is invalid.');
+      return;
+    }
+
+    const amountCents = parsePHPAmountToCents(amountPHP);
+    if (!Number.isInteger(amountCents) || amountCents <= 0) {
+      setModalError('Amount could not be converted to valid centavos.');
+      return;
+    }
 
     setIsSubmitting(true);
     try {
       await dataService.recordExpense({
         categoryId: selectedCategoryId,
-        categoryName: cat?.name || 'Store Operations',
+        categoryName: cat.name,
         shiftId: activeShift ? activeShift.id : undefined,
         userId: currentUser.id,
         userName: currentUser.fullName,
-        amountCents: parsePHPAmountToCents(amountPHP),
+        amountCents,
         payee: payee.trim(),
         description: description.trim(),
         receiptReference: receiptRef.trim() || undefined
@@ -82,7 +98,7 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({
       setReceiptRef('');
       onRefreshData();
     } catch (err) {
-      setModalError('Failed to record expense: ' + (err as Error).message);
+      setModalError((err as Error).message || 'Failed to record expense.');
     } finally {
       setIsSubmitting(false);
     }

@@ -95,10 +95,12 @@ export const PurchasesView: React.FC<PurchasesViewProps> = ({
     setPoItems(prev =>
       prev.map(item => {
         if (item.id === id) {
+          // Allow typing intermediate values, but clamp negatives; zero rejected on save
+          const safeQty = Number.isFinite(qty) ? Math.max(0, qty) : 0;
           return {
             ...item,
-            quantity: Math.max(0, qty),
-            totalCostCents: Math.round(Math.max(0, qty) * item.unitCostCents)
+            quantity: safeQty,
+            totalCostCents: Math.round(safeQty * item.unitCostCents)
           };
         }
         return item;
@@ -130,6 +132,8 @@ export const PurchasesView: React.FC<PurchasesViewProps> = ({
 
   const handleSavePurchaseOrder = async () => {
     setModalError(null);
+    if (isSubmitting) return;
+
     const supplier = suppliers.find(s => s.id === selectedSupplierId) || suppliers[0];
     if (!supplier) {
       setModalError('Please register and choose a vendor supplier.');
@@ -137,6 +141,16 @@ export const PurchasesView: React.FC<PurchasesViewProps> = ({
     }
     if (poItems.length === 0) {
       setModalError('Please add at least one material/ingredient to the purchase order.');
+      return;
+    }
+    const badQty = poItems.find(i => !i.quantity || i.quantity <= 0);
+    if (badQty) {
+      setModalError(`Quantity for "${badQty.itemName}" must be greater than zero.`);
+      return;
+    }
+    const badCost = poItems.find(i => i.unitCostCents < 0);
+    if (badCost) {
+      setModalError(`Unit cost for "${badCost.itemName}" cannot be negative.`);
       return;
     }
 

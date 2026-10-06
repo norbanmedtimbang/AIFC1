@@ -1280,43 +1280,84 @@ class DataService {
   }
 
   /**
-   * Records expense in Supabase and local database
+   * Records expense in Supabase (authoritative) and local cache.
+   * Failures are thrown — never report success without persistence confirmation.
    */
-  public async recordExpense(expense: Omit<Expense, 'id' | 'spentAt'>): Promise<void> {
-    const activeShift = this.state.activeShift;
+  public async recordExpense(expense: Omit<Expense, 'id' | 'spentAt'>): Promise<Expense> {
+    const { canPerformCapability } = await import('./rbac');
     const currentUser = this.getCurrentUser();
-    const id = 'exp-' + Date.now();
+    if (!canPerformCapability(currentUser.role, 'canManageExpenses')) {
+      throw new Error('You do not have permission to record expenses.');
+    }
+
+    if (!expense.categoryId?.trim()) {
+      throw new Error('Expense category is required.');
+    }
+    if (!expense.description?.trim()) {
+      throw new Error('Expense description is required.');
+    }
+    if (!expense.payee?.trim()) {
+      throw new Error('Payee is required.');
+    }
+    if (!Number.isFinite(expense.amountCents) || expense.amountCents <= 0) {
+      throw new Error('Expense amount must be greater than zero (integer centavos).');
+    }
+    if (!Number.isInteger(expense.amountCents)) {
+      throw new Error('Expense amount must be whole centavos (no fractional cents).');
+    }
+
+    const activeShift = this.state.activeShift;
+    const id = 'exp-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6);
     const now = new Date().toISOString();
 
+    const full: Expense = {
+      id,
+      categoryId: expense.categoryId,
+      categoryName: expense.categoryName,
+      shiftId: expense.shiftId || activeShift?.id,
+      userId: currentUser.id,
+      userName: currentUser.fullName,
+      amountCents: expense.amountCents,
+      payee: expense.payee.trim(),
+      description: expense.description.trim(),
+      receiptReference: expense.receiptReference?.trim() || undefined,
+      spentAt: now
+    };
+
     if (isSupabaseConfigured() && supabase) {
-      try {
-        await supabase.from('expenses').insert({
-          id,
-          category_id: expense.categoryId,
-          category_name: expense.categoryName,
-          amount_cents: expense.amountCents,
-          description: expense.description,
-          payee: expense.payee || null,
-          receipt_reference: expense.receiptReference || null,
-          shift_id: activeShift ? activeShift.id : null,
-          user_id: currentUser.id,
-          user_name: currentUser.fullName,
-          created_at: now
-        });
-      } catch (e) {
-        console.warn('Notice: Supabase expense exception, recording locally:', e);
+      const { error } = await supabase.from('expenses').insert({
+        id: full.id,
+        category_id: full.categoryId,
+        category_name: full.categoryName,
+        amount_cents: full.amountCents,
+        description: full.description,
+        payee: full.payee,
+        receipt_reference: full.receiptReference || null,
+        shift_id: full.shiftId || null,
+        user_id: full.userId,
+        user_name: full.userName,
+        created_at: full.spentAt
+      });
+
+      if (error) {
+        console.error('[recordExpense] Supabase insert failed:', error);
+        throw new Error(
+          error.message?.includes('amount_cents')
+            ? 'Invalid expense amount. Please enter a valid amount greater than zero.'
+            : error.message?.includes('user_id')
+              ? 'Could not identify the logged-in user for recorded_by.'
+              : `Failed to save expense: ${error.message}`
+        );
       }
     }
 
-    db.addExpense({
-      categoryId: expense.categoryId,
-      categoryName: expense.categoryName,
-      amountCents: expense.amountCents,
-      payee: expense.payee,
-      description: expense.description,
-      receiptReference: expense.receiptReference
-    });
-    await this.loadAllData();
+    // Local cache (same id as cloud so refresh stays consistent offline)
+    this.state.expenses.unshift(full);
+    const localState = db.getState();
+    localState.expenses.unshift(full);
+    db.persistState();
+    this.notify();
+    return full;
   }
 
   /**
@@ -1507,19 +1548,18 @@ class DataService {
     }
     db.saveSupplier(fullSupplier);
 
-    // Try persisting to Supabase if table exists
     if (isSupabaseConfigured() && supabase) {
-      try {
-        await supabase.from('suppliers').upsert({
-          id,
-          company_name: fullSupplier.companyName,
-          contact_person: fullSupplier.contactPerson || null,
-          phone: fullSupplier.phone || null,
-          email: fullSupplier.email || null,
-          address: fullSupplier.address || null
-        });
-      } catch (e) {
-        console.warn('Notice: suppliers cloud table upsert skipped:', e);
+      const { error } = await supabase.from('suppliers').upsert({
+        id,
+        company_name: fullSupplier.companyName,
+        contact_person: fullSupplier.contactPerson || null,
+        phone: fullSupplier.phone || null,
+        email: fullSupplier.email || null,
+        address: fullSupplier.address || null
+      });
+      if (error) {
+        console.error('[saveSupplier] upsert failed:', error);
+        throw new Error(`Failed to save supplier: ${error.message}`);
       }
     }
 
@@ -1528,41 +1568,120 @@ class DataService {
   }
 
   /**
-   * Records a purchase order delivery and restocks inventory in Supabase
+   * Records a purchase order and optionally restocks inventory.
+   * Purchase header + items + inventory (if received) are persisted to Supabase.
+   * Inventory is increased exactly once — never doubled on local+cloud paths.
    */
   public async recordPurchase(purchase: Omit<Purchase, 'id' | 'purchasedAt'>): Promise<Purchase> {
-    if (!purchase.supplierId) {
+    const { canPerformCapability } = await import('./rbac');
+    const currentUser = this.getCurrentUser();
+    if (!canPerformCapability(currentUser.role, 'canManagePurchases')) {
+      throw new Error('You do not have permission to record purchases.');
+    }
+
+    if (!purchase.supplierId?.trim()) {
       throw new Error('Supplier is required for purchase order.');
     }
     if (!purchase.items || purchase.items.length === 0) {
       throw new Error('Purchase order must contain at least one item.');
     }
+    if (!['pending', 'received', 'cancelled'].includes(purchase.status)) {
+      throw new Error('Invalid purchase status.');
+    }
 
-    const id = 'po-' + Date.now();
+    // Validate line items — reject zero/negative qty or negative cost
+    for (const item of purchase.items) {
+      if (!item.inventoryItemId) {
+        throw new Error('Each purchase line must reference an inventory item.');
+      }
+      if (!Number.isFinite(item.quantity) || item.quantity <= 0) {
+        throw new Error(`Invalid quantity for "${item.itemName || 'item'}". Quantity must be greater than zero.`);
+      }
+      if (!Number.isFinite(item.unitCostCents) || item.unitCostCents < 0) {
+        throw new Error(`Invalid unit cost for "${item.itemName || 'item'}". Cost cannot be negative.`);
+      }
+      const expectedLine = Math.round(item.quantity * item.unitCostCents);
+      if (item.totalCostCents !== expectedLine) {
+        item.totalCostCents = expectedLine;
+      }
+    }
+
+    const computedTotal = purchase.items.reduce((sum, i) => sum + i.totalCostCents, 0);
+    if (computedTotal < 0) {
+      throw new Error('Purchase total cannot be negative.');
+    }
+
+    const id = 'po-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6);
     const now = new Date().toISOString();
-    const currentUser = this.getCurrentUser();
+    const isReceived = purchase.status === 'received';
 
     const newPurchase: Purchase = {
-      ...purchase,
+      supplierId: purchase.supplierId,
+      supplierName: purchase.supplierName,
+      invoiceNumber: purchase.invoiceNumber?.trim() || undefined,
+      status: purchase.status,
+      totalAmountCents: computedTotal,
+      items: purchase.items.map(i => ({
+        ...i,
+        totalCostCents: Math.round(i.quantity * i.unitCostCents)
+      })),
       id,
       purchasedAt: now,
-      receivedAt: purchase.status === 'received' ? now : undefined
+      receivedAt: isReceived ? now : undefined
     };
 
-    this.state.purchases.unshift(newPurchase);
-    db.recordPurchase(purchase);
+    // ── Supabase persistence (authoritative when configured) ──
+    if (isSupabaseConfigured() && supabase) {
+      const { error: hdrErr } = await supabase.from('purchases').insert({
+        id: newPurchase.id,
+        supplier_id: newPurchase.supplierId,
+        supplier_name: newPurchase.supplierName,
+        invoice_number: newPurchase.invoiceNumber || null,
+        status: newPurchase.status,
+        total_amount_cents: newPurchase.totalAmountCents,
+        purchased_at: newPurchase.purchasedAt,
+        received_at: newPurchase.receivedAt || null,
+        recorded_by: currentUser.id
+      });
 
-    // If marked received, immediately update inventory stock and movements in Supabase
-    if (newPurchase.status === 'received' && isSupabaseConfigured() && supabase) {
-      for (const item of newPurchase.items) {
-        const invItem = this.state.inventoryItems.find(i => i.id === item.inventoryItemId);
-        if (invItem) {
+      if (hdrErr) {
+        console.error('[recordPurchase] header insert failed:', hdrErr);
+        throw new Error(
+          hdrErr.message?.includes('suppliers') || hdrErr.code === '23503'
+            ? 'Supplier not found in database. Save the supplier first, then retry.'
+            : `Failed to save purchase: ${hdrErr.message}`
+        );
+      }
+
+      const itemRows = newPurchase.items.map(item => ({
+        id: item.id || 'poi-' + Date.now() + '-' + Math.random().toString(36).slice(2, 5),
+        purchase_id: newPurchase.id,
+        inventory_item_id: item.inventoryItemId,
+        item_name: item.itemName,
+        unit: item.unit,
+        quantity: item.quantity,
+        unit_cost_cents: item.unitCostCents,
+        total_cost_cents: item.totalCostCents
+      }));
+
+      const { error: itemsErr } = await supabase.from('purchase_items').insert(itemRows);
+      if (itemsErr) {
+        console.error('[recordPurchase] items insert failed:', itemsErr);
+        // Best-effort: mark header cancelled so it is not a partial ghost PO
+        await supabase.from('purchases').update({ status: 'cancelled' }).eq('id', newPurchase.id);
+        throw new Error(`Failed to save purchase items: ${itemsErr.message}`);
+      }
+
+      if (isReceived) {
+        for (const item of newPurchase.items) {
+          const invItem = this.state.inventoryItems.find(i => i.id === item.inventoryItemId);
+          if (!invItem) {
+            throw new Error(`Inventory item not found for "${item.itemName}". Purchase was saved but stock was not updated for this line.`);
+          }
+
           const updatedStock = invItem.currentStock + item.quantity;
-          invItem.currentStock = updatedStock;
-          invItem.updatedAt = now;
 
-          // Update stock in Supabase
-          await supabase
+          const { error: stockErr } = await supabase
             .from('inventory_items')
             .update({
               current_stock: updatedStock,
@@ -1571,21 +1690,69 @@ class DataService {
             })
             .eq('id', invItem.id);
 
-          // Log movement in Supabase
-          await supabase.from('inventory_movements').insert({
-            id: 'mov-po-' + Date.now() + '-' + Math.random().toString(36).substr(2, 4),
+          if (stockErr) {
+            console.error('[recordPurchase] stock update failed:', stockErr);
+            throw new Error(`Failed to update stock for "${item.itemName}": ${stockErr.message}`);
+          }
+
+          const { error: movErr } = await supabase.from('inventory_movements').insert({
+            id: 'mov-po-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6),
             inventory_item_id: invItem.id,
             type: 'purchase',
             quantity_delta: item.quantity,
             balance_after: updatedStock,
-            reference_id: id,
-            notes: `Restocked via PO #${newPurchase.invoiceNumber || id} from ${newPurchase.supplierName}`,
+            reference_id: newPurchase.id,
+            notes: `Restocked via PO #${newPurchase.invoiceNumber || newPurchase.id} from ${newPurchase.supplierName}`,
             created_by: currentUser.fullName,
             created_at: now
           });
+
+          if (movErr) {
+            console.error('[recordPurchase] movement insert failed:', movErr);
+            // Stock already updated — log but still throw so UI does not claim full success without audit trail
+            throw new Error(`Stock updated for "${item.itemName}" but inventory movement log failed: ${movErr.message}`);
+          }
+
+          // Update in-memory inventory once
+          invItem.currentStock = updatedStock;
+          invItem.costPerUnitCents = item.unitCostCents;
+          invItem.updatedAt = now;
+        }
+      }
+    } else {
+      // Offline / local-only path: update inventory once via storage helper
+      if (isReceived) {
+        for (const item of newPurchase.items) {
+          const invItem = this.state.inventoryItems.find(i => i.id === item.inventoryItemId);
+          if (invItem) {
+            invItem.currentStock += item.quantity;
+            invItem.costPerUnitCents = item.unitCostCents;
+            invItem.updatedAt = now;
+            this.state.inventoryMovements.unshift({
+              id: 'mov-po-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6),
+              inventoryItemId: invItem.id,
+              itemName: invItem.name,
+              type: 'purchase',
+              quantityDelta: item.quantity,
+              balanceAfter: invItem.currentStock,
+              referenceId: newPurchase.id,
+              notes: `Restock from PO #${newPurchase.invoiceNumber || newPurchase.id}`,
+              createdBy: currentUser.fullName,
+              createdAt: now
+            });
+          }
         }
       }
     }
+
+    // Local purchase cache (do NOT call db.recordPurchase — it would double inventory)
+    this.state.purchases.unshift(newPurchase);
+    const localState = db.getState();
+    localState.purchases.unshift(newPurchase);
+    // Mirror inventory into local store without re-applying deltas
+    localState.inventoryItems = this.state.inventoryItems.map(i => ({ ...i }));
+    localState.inventoryMovements = [...this.state.inventoryMovements];
+    db.persistState();
 
     this.notify();
     return newPurchase;
