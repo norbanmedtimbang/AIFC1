@@ -156,6 +156,7 @@ export interface Purchase {
 }
 
 export type OrderType = 'dine_in' | 'take_out' | 'delivery_pickup';
+export type DiscountType = 'senior' | 'pwd' | 'staff' | 'custom';
 export type PaymentMethod = 'cash' | 'gcash' | 'maya' | 'card_pos' | 'bank_transfer';
 export type PaymentStatus = 'paid' | 'refunded' | 'partially_refunded' | 'voided';
 
@@ -198,8 +199,15 @@ export interface Sale {
   customerName?: string;
   customerNotes?: string;
   subtotalCents: number;
+  tableNumber?: string; // dine-in table
   discountCents: number;
   discountLabel?: string;
+  discountType?: DiscountType;
+  discountIdName?: string; // Senior/PWD ID holder name
+  discountIdNumber?: string; // Senior Citizen / PWD ID number
+  isVatExempt?: boolean; // Senior/PWD transactions are VAT-exempt
+  vatRemovedCents?: number; // VAT removed from price before the 20% discount
+  vatExemptCents?: number; // VAT-exempt sales amount (amount due)
   taxCents: number;
   totalCents: number;
   paymentStatus: PaymentStatus;

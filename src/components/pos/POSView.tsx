@@ -1,4 +1,5 @@
 import React, { useState, useMemo } from 'react';
+import { computePricing } from '../../services/pricing';
 import {
   Search,
   Plus,
@@ -59,6 +60,9 @@ export const POSView: React.FC<POSViewProps> = ({
   const [cart, setCart] = useState<CartItem[]>([]);
   const [orderType, setOrderType] = useState<OrderType>('dine_in');
   const [customerName, setCustomerName] = useState<string>('');
+  const [tableNumber, setTableNumber] = useState<string>('');
+  const [discountIdName, setDiscountIdName] = useState<string>('');
+  const [discountIdNumber, setDiscountIdNumber] = useState<string>('');
   const [discountType, setDiscountType] = useState<'none' | 'senior' | 'pwd' | 'staff' | 'custom'>('none');
   const [customDiscountPercent, setCustomDiscountPercent] = useState<number>(10);
 
@@ -100,27 +104,13 @@ export const POSView: React.FC<POSViewProps> = ({
     return cart.reduce((sum, item) => sum + item.totalPriceCents, 0);
   }, [cart]);
 
-  const discountDetails = useMemo(() => {
-    if (subtotalCents === 0 || discountType === 'none') {
-      return { cents: 0, label: '' };
-    }
-    if (discountType === 'senior') {
-      return { cents: Math.round(subtotalCents * 0.20), label: 'Senior (20%)' };
-    }
-    if (discountType === 'pwd') {
-      return { cents: Math.round(subtotalCents * 0.20), label: 'PWD (20%)' };
-    }
-    if (discountType === 'staff') {
-      return { cents: Math.round(subtotalCents * 0.10), label: 'Staff (10%)' };
-    }
-    if (discountType === 'custom') {
-      const pct = Math.min(100, Math.max(0, customDiscountPercent)) / 100;
-      return { cents: Math.round(subtotalCents * pct), label: `Discount (${customDiscountPercent}%)` };
-    }
-    return { cents: 0, label: '' };
-  }, [subtotalCents, discountType, customDiscountPercent]);
-
-  const totalCents = Math.max(0, subtotalCents - discountDetails.cents);
+  const pricing = useMemo(
+    () => computePricing(subtotalCents, settings, { type: discountType, customPercent: customDiscountPercent }),
+    [subtotalCents, settings, discountType, customDiscountPercent]
+  );
+  const discountDetails = { cents: pricing.discountCents, label: pricing.label };
+  const isScPwd = discountType === 'senior' || discountType === 'pwd';
+  const totalCents = pricing.totalCents;
 
   // Selecting a product from grid — progressive disclosure
   const handleSelectProduct = (product: Product) => {
@@ -228,6 +218,9 @@ export const POSView: React.FC<POSViewProps> = ({
   const handleClearCart = () => {
     if (cart.length > 0) {
       setCart([]);
+      setTableNumber('');
+      setDiscountIdName('');
+      setDiscountIdNumber('');
       setDiscountType('none');
       setShowDiscountPanel(false);
     }
@@ -250,6 +243,14 @@ export const POSView: React.FC<POSViewProps> = ({
   // Open Checkout
   const handleOpenCheckout = () => {
     if (cart.length === 0) return;
+    if (orderType === 'dine_in' && !tableNumber.trim()) {
+      alert('Enter the table number for this dine-in order.');
+      return;
+    }
+    if (isScPwd && (!discountIdName.trim() || !discountIdNumber.trim())) {
+      alert('Enter the Senior Citizen / PWD ID holder name and ID number before charging.');
+      return;
+    }
     setPaymentMethod('cash');
     setCashTenderedInput((totalCents / 100).toString());
     setReferenceNumber('');
@@ -289,8 +290,13 @@ export const POSView: React.FC<POSViewProps> = ({
         items: cart,
         orderType,
         customerName: customerName.trim() || undefined,
-        discountCents: discountDetails.cents,
-        discountLabel: discountDetails.label || undefined,
+        tableNumber: orderType === 'dine_in' ? tableNumber.trim() || undefined : undefined,
+        discount: {
+          type: discountType,
+          customPercent: customDiscountPercent,
+          idName: isScPwd ? discountIdName.trim() : undefined,
+          idNumber: isScPwd ? discountIdNumber.trim() : undefined
+        },
         paymentMethod,
         tenderedCents: paymentMethod === 'cash' ? tenderedCents : totalCents,
         referenceNumber: referenceNumber.trim() || undefined
@@ -298,6 +304,9 @@ export const POSView: React.FC<POSViewProps> = ({
 
       setCart([]);
       setCustomerName('');
+      setTableNumber('');
+      setDiscountIdName('');
+      setDiscountIdNumber('');
       setDiscountType('none');
       setIsCheckoutOpen(false);
       setCompletedSale(result.sale);
@@ -485,6 +494,18 @@ export const POSView: React.FC<POSViewProps> = ({
             ))}
           </div>
 
+          {orderType === 'dine_in' && (
+            <input
+              type="text"
+              inputMode="numeric"
+              maxLength={6}
+              placeholder="Table no. (required for dine-in)"
+              value={tableNumber}
+              onChange={e => setTableNumber(e.target.value)}
+              className="w-full bg-[#FAF7F2] px-3.5 py-2 rounded-xl border border-transparent text-xs text-[#292929] placeholder:text-[#9B948C] outline-hidden focus:bg-white focus:border-[#E8E2D9] transition"
+            />
+          )}
+
           <input
             type="text"
             placeholder="Customer name (optional)"
@@ -599,6 +620,27 @@ export const POSView: React.FC<POSViewProps> = ({
                       <option value="custom">Custom %</option>
                     </select>
                   </div>
+                  {isScPwd && (
+                    <div className="space-y-1.5">
+                      <input
+                        type="text"
+                        placeholder={`${discountType === 'senior' ? 'Senior' : 'PWD'} ID holder full name`}
+                        value={discountIdName}
+                        onChange={e => setDiscountIdName(e.target.value)}
+                        className="w-full bg-white border border-[#E8E2D9] rounded-lg px-2.5 py-1.5 text-xs text-[#292929] outline-hidden focus:border-[#3B2925]"
+                      />
+                      <input
+                        type="text"
+                        placeholder="ID number"
+                        value={discountIdNumber}
+                        onChange={e => setDiscountIdNumber(e.target.value)}
+                        className="w-full bg-white border border-[#E8E2D9] rounded-lg px-2.5 py-1.5 text-xs font-mono text-[#292929] outline-hidden focus:border-[#3B2925]"
+                      />
+                      <p className="text-[10px] text-[#9B948C] leading-snug">
+                        VAT is removed first, then 20% is taken off the VAT-exclusive price.
+                      </p>
+                    </div>
+                  )}
                   {discountType === 'custom' && (
                     <div className="flex items-center gap-2">
                       <input
@@ -622,6 +664,12 @@ export const POSView: React.FC<POSViewProps> = ({
               <span>Subtotal</span>
               <span className="font-mono text-[#292929] tabular-nums">{formatPHP(subtotalCents)}</span>
             </div>
+            {pricing.isVatExempt && pricing.vatRemovedCents > 0 && (
+              <div className="flex justify-between text-xs text-[#7A736C]">
+                <span>Less: VAT (exempt)</span>
+                <span className="font-mono tabular-nums">−{formatPHP(pricing.vatRemovedCents)}</span>
+              </div>
+            )}
             {discountDetails.cents > 0 && (
               <div className="flex justify-between text-xs text-[#A25035]">
                 <span>{discountDetails.label}</span>
@@ -888,7 +936,7 @@ export const POSView: React.FC<POSViewProps> = ({
               </p>
               <p className="text-[11px] text-[#7A736C] mt-2">
                 {cart.length} {cart.length === 1 ? 'item' : 'items'}
-                {orderType === 'dine_in' ? ' · Dine in' : orderType === 'take_out' ? ' · Take out' : ' · Delivery'}
+                {orderType === 'dine_in' ? ` · Dine in${tableNumber.trim() ? ' · Table ' + tableNumber.trim() : ''}` : orderType === 'take_out' ? ' · Take out' : ' · Delivery'}
               </p>
             </div>
 

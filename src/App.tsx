@@ -25,16 +25,35 @@ export default function App() {
   const [isLoading, setIsLoading] = useState(true);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [connectionError, setConnectionError] = useState<string | null>(null);
+  // Data freshness for the dashboard: never show cached numbers as if they were live
+  const [syncError, setSyncError] = useState<string | null>(null);
+  const [hasSynced, setHasSynced] = useState(false);
+  const [isSyncing, setIsSyncing] = useState(false);
   const [currentModule, setCurrentModule] = useState<NavModule>('pos');
   const [isLocked, setIsLocked] = useState(false);
   const [isSwitchUserOpen, setIsSwitchUserOpen] = useState(false);
 
   // Sync state from Supabase data service
-  const refreshData = useCallback(() => {
-    dataService.loadAllData().then(state => setDbState(state)).catch(err => {
-      console.error('Data refresh error:', err);
-    });
+  const applySyncStatus = useCallback(() => {
+    const status = dataService.getDataSourceStatus();
+    setSyncError(status.ok ? null : status.error || 'Unable to reach the database.');
+    if (status.ok) setHasSynced(true);
   }, []);
+
+  const refreshData = useCallback(() => {
+    setIsSyncing(true);
+    dataService
+      .loadAllData()
+      .then(state => {
+        setDbState(state);
+        applySyncStatus();
+      })
+      .catch(err => {
+        console.error('Data refresh error:', err);
+        setSyncError(err instanceof Error ? err.message : 'Unable to refresh data.');
+      })
+      .finally(() => setIsSyncing(false));
+  }, [applySyncStatus]);
 
   // Initial Load & Realtime Sync
   const loadInitialData = useCallback(async () => {
@@ -43,14 +62,16 @@ export default function App() {
     try {
       const liveData = await dataService.loadAllData();
       setDbState(liveData);
+      applySyncStatus();
       setIsLoading(false);
     } catch (err) {
       console.warn('Network or database connection issue, smoothly using offline register cache:', err);
       const offlineData = dataService.loadOfflineData();
       setDbState(offlineData);
+      setSyncError(err instanceof Error ? err.message : 'Unable to reach the database.');
       setIsLoading(false);
     }
-  }, []);
+  }, [applySyncStatus]);
 
   useEffect(() => {
     loadInitialData();
@@ -288,13 +309,20 @@ export default function App() {
 
               {currentModule === 'dashboard' && (
                 <DashboardView
+                  currentUser={currentUser}
                   sales={dbState.sales}
                   inventoryItems={dbState.inventoryItems}
-                  activeShift={activeShift}
+                  shifts={dbState.shifts}
+                  cashMovements={dbState.cashMovements}
+                  expenses={dbState.expenses}
+                  purchases={dbState.purchases}
+                  syncState={syncError ? 'error' : !hasSynced && isSyncing ? 'loading' : 'ready'}
+                  syncError={syncError}
+                  onRetry={refreshData}
                   onNavigateToPOS={() => setCurrentModule('pos')}
                   onNavigateToInventory={() => setCurrentModule('inventory')}
                   onNavigateToStaff={() => setCurrentModule('staff')}
-                  onNavigateToMenu={() => setCurrentModule('menu')}
+                  onNavigateToReports={() => setCurrentModule('reports')}
                 />
               )}
 

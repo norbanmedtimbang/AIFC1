@@ -19,6 +19,7 @@ import {
   PaymentMethod,
   OrderType
 } from '../types';
+import { computePricing, DiscountInput } from './pricing';
 
 const STORAGE_KEY = 'c5isr_pos_offline_db_v2_clean';
 const DB_VERSION = '2.0.0';
@@ -408,8 +409,8 @@ export class LocalStorageDB {
     orderType: OrderType;
     customerName?: string;
     customerNotes?: string;
-    discountCents: number;
-    discountLabel?: string;
+    tableNumber?: string;
+    discount?: DiscountInput & { idName?: string; idNumber?: string };
     paymentMethod: PaymentMethod;
     tenderedCents: number;
     referenceNumber?: string;
@@ -418,14 +419,15 @@ export class LocalStorageDB {
     const activeShift = this.state.activeShift;
     const now = new Date();
 
-    // 1. Calculate totals
+    // 1. Calculate totals (shared with the POS preview so both always agree)
     const subtotalCents = payload.items.reduce((sum, item) => sum + item.totalPriceCents, 0);
-    const discountCents = Math.min(payload.discountCents, subtotalCents);
-    const totalCents = Math.max(0, subtotalCents - discountCents);
-    const taxRate = this.state.settings.taxRatePercent / 100;
-    const taxCents = this.state.settings.isTaxIncluded 
-      ? Math.round((totalCents * taxRate) / (1 + taxRate))
-      : Math.round(totalCents * taxRate);
+    const discountInput = payload.discount ?? { type: 'none' as const };
+    const isScPwd = discountInput.type === 'senior' || discountInput.type === 'pwd';
+    if (isScPwd && (!payload.discount?.idName?.trim() || !payload.discount?.idNumber?.trim())) {
+      throw new Error('Senior Citizen / PWD discount requires the ID holder name and ID number.');
+    }
+    const pricing = computePricing(subtotalCents, this.state.settings, discountInput);
+    const { discountCents, totalCents, taxCents } = pricing;
 
     const changeCents = payload.paymentMethod === 'cash' 
       ? Math.max(0, payload.tenderedCents - totalCents)
@@ -513,9 +515,16 @@ export class LocalStorageDB {
       orderType: payload.orderType,
       customerName: payload.customerName || 'Walk-in Customer',
       customerNotes: payload.customerNotes,
+      tableNumber: payload.orderType === 'dine_in' ? payload.tableNumber?.trim() || undefined : undefined,
       subtotalCents,
       discountCents,
-      discountLabel: payload.discountLabel,
+      discountLabel: pricing.label || undefined,
+      discountType: discountInput.type === 'none' ? undefined : discountInput.type,
+      discountIdName: isScPwd ? payload.discount?.idName?.trim() : undefined,
+      discountIdNumber: isScPwd ? payload.discount?.idNumber?.trim() : undefined,
+      isVatExempt: pricing.isVatExempt || undefined,
+      vatRemovedCents: pricing.isVatExempt ? pricing.vatRemovedCents : undefined,
+      vatExemptCents: pricing.isVatExempt ? totalCents : undefined,
       taxCents,
       totalCents,
       paymentStatus: 'paid',

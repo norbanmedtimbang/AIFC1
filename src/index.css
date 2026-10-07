@@ -231,3 +231,35 @@
   -webkit-box-orient: vertical;
   overflow: hidden;
 }
+
+
+/* ---- Thermal receipt printing: 58mm USB roll ---- */
+@page {
+  size: 58mm auto;
+  margin: 0;
+}
+@media print {
+  body * {
+    visibility: hidden;
+  }
+  #printable-receipt,
+  #printable-receipt * {
+    visibility: visible;
+  }
+  #printable-receipt {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 48mm !important;
+    margin: 0 5mm;
+    padding: 2mm 0 !important;
+    border: none !important;
+    box-shadow: none !important;
+    border-radius: 0 !important;
+    background: #fff !important;
+    color: #000 !important;
+  }
+  .no-print {
+    display: none !important;
+  }
+}

@@ -202,7 +202,7 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
                       })}
                     </td>
                     <td className="py-2.5 px-4 text-[#292929]">
-                      {sale.customerName || 'Walk-in'}
+                      {sale.customerName || 'Walk-in'}{sale.tableNumber ? ` · Table ${sale.tableNumber}` : ''}
                     </td>
                     <td className="py-2.5 px-4 text-[#6E6862] truncate max-w-xs">
                       {sale.items

@@ -101,6 +101,12 @@ export const ThermalReceiptModal: React.FC<ThermalReceiptModalProps> = ({
                   {sale.orderType.replace('_', ' ')}
                 </span>
               </div>
+              {sale.tableNumber && (
+                <div className="flex justify-between font-black">
+                  <span>TABLE:</span>
+                  <span>{sale.tableNumber}</span>
+                </div>
+              )}
               {sale.customerName && (
                 <div className="flex justify-between font-semibold">
                   <span>CUSTOMER:</span>
@@ -149,10 +155,16 @@ export const ThermalReceiptModal: React.FC<ThermalReceiptModalProps> = ({
                 <span>SUBTOTAL:</span>
                 <span>{formatPHP(sale.subtotalCents)}</span>
               </div>
+              {sale.isVatExempt && (sale.vatRemovedCents ?? 0) > 0 && (
+                <div className="flex justify-between">
+                  <span>LESS: VAT (EXEMPT):</span>
+                  <span>-{formatPHP(sale.vatRemovedCents ?? 0)}</span>
+                </div>
+              )}
               {sale.discountCents > 0 && (
                 <div className="flex justify-between text-rose-700 font-bold">
-                  <span>DISCOUNT ({sale.discountLabel || 'PROMO'}):</span>
-                  <span>-{formatPHP(sale.discountCents)}</span>
+                  <span>{sale.isVatExempt ? 'LESS: 20% ' + (sale.discountType === 'pwd' ? 'PWD' : 'SENIOR') : `DISCOUNT (${sale.discountLabel || 'PROMO'})`}:</span>
+                  <span>-{formatPHP(sale.isVatExempt ? sale.discountCents - (sale.vatRemovedCents ?? 0) : sale.discountCents)}</span>
                 </div>
               )}
               <div className="flex justify-between text-xs font-black pt-1.5 border-t border-stone-300 text-black">
@@ -190,13 +202,36 @@ export const ThermalReceiptModal: React.FC<ThermalReceiptModalProps> = ({
             <div className="py-2 border-b border-dashed border-stone-400 text-[9px] text-stone-600 space-y-0.5 font-medium">
               <div className="flex justify-between">
                 <span>VATABLE SALES:</span>
-                <span>{formatPHP(sale.totalCents - sale.taxCents)}</span>
+                <span>{formatPHP(sale.isVatExempt ? 0 : sale.totalCents - sale.taxCents)}</span>
               </div>
               <div className="flex justify-between">
-                <span>12% VAT:</span>
+                <span>{settings.taxRatePercent}% VAT:</span>
                 <span>{formatPHP(sale.taxCents)}</span>
               </div>
+              <div className="flex justify-between">
+                <span>VAT-EXEMPT SALES:</span>
+                <span>{formatPHP(sale.vatExemptCents ?? 0)}</span>
+              </div>
+              <div className="flex justify-between">
+                <span>ZERO-RATED SALES:</span>
+                <span>{formatPHP(0)}</span>
+              </div>
             </div>
+
+            {/* Senior / PWD details */}
+            {sale.isVatExempt && (
+              <div className="py-2 border-b border-dashed border-stone-400 text-[9px] space-y-1.5">
+                <div className="flex justify-between font-bold">
+                  <span>{sale.discountType === 'pwd' ? 'PWD' : 'SENIOR CITIZEN'} NAME:</span>
+                  <span className="text-right">{sale.discountIdName}</span>
+                </div>
+                <div className="flex justify-between font-bold">
+                  <span>ID NO.:</span>
+                  <span>{sale.discountIdNumber}</span>
+                </div>
+                <div className="pt-3 border-t border-stone-400 text-center text-[8px]">SIGNATURE</div>
+              </div>
+            )}
 
             {/* Footer */}
             <div className="text-center pt-3 text-[9px] text-stone-600 space-y-1">

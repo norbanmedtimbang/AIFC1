@@ -1,4 +1,5 @@
 import { supabase, isSupabaseConfigured } from './supabase';
+import { computePricing, DiscountInput } from './pricing';
 import {
   User,
   CashierShift,
@@ -43,6 +44,13 @@ export interface AppDataState {
   expenses: Expense[];
   auditLogs: AuditLog[];
   settings: ShopSettings;
+}
+
+export interface DataSourceStatus {
+  mode: 'supabase' | 'local';
+  ok: boolean;            // false when the last Supabase sync failed and cached data is in use
+  error: string | null;
+  lastSyncedAt: string | null;
 }
 
 const defaultSettings: ShopSettings = {
@@ -116,6 +124,12 @@ class DataService {
 
   private listeners: Set<(state: AppDataState) => void> = new Set();
   private isInitialized = false;
+  private dataSource: DataSourceStatus = { mode: 'local', ok: true, error: null, lastSyncedAt: null };
+
+  /** Reports whether the data currently in memory came from a successful sync. */
+  public getDataSourceStatus(): DataSourceStatus {
+    return { ...this.dataSource };
+  }
 
   public subscribe(listener: (state: AppDataState) => void): () => void {
     this.listeners.add(listener);
@@ -186,6 +200,7 @@ class DataService {
   public async loadAllData(): Promise<AppDataState> {
     if (!isSupabaseConfigured() || !supabase) {
       console.warn('Supabase not configured, using offline local database.');
+      this.dataSource = { mode: 'local', ok: true, error: null, lastSyncedAt: new Date().toISOString() };
       return this.loadOfflineData();
     }
 
@@ -586,10 +601,17 @@ class DataService {
       };
 
       this.isInitialized = true;
+      this.dataSource = { mode: 'supabase', ok: true, error: null, lastSyncedAt: new Date().toISOString() };
       this.notify();
       return this.getState();
     } catch (err) {
       console.warn('DataService.loadAllData error, smoothly falling back to offline cache:', err);
+      this.dataSource = {
+        mode: 'supabase',
+        ok: false,
+        error: err instanceof Error ? err.message : 'Unable to reach the database.',
+        lastSyncedAt: this.dataSource.lastSyncedAt
+      };
       return this.loadOfflineData();
     }
   }
@@ -869,8 +891,8 @@ class DataService {
     orderType: OrderType;
     customerName?: string;
     customerNotes?: string;
-    discountCents: number;
-    discountLabel?: string;
+    tableNumber?: string;
+    discount?: DiscountInput & { idName?: string; idNumber?: string };
     paymentMethod: PaymentMethod;
     tenderedCents: number;
     referenceNumber?: string;
@@ -889,12 +911,8 @@ class DataService {
     try {
       // 1. Calculate totals
       const subtotalCents = payload.items.reduce((sum, item) => sum + item.totalPriceCents, 0);
-      const discountCents = Math.min(payload.discountCents, subtotalCents);
-      const totalCents = Math.max(0, subtotalCents - discountCents);
-      const taxRate = this.state.settings.taxRatePercent / 100;
-      const taxCents = this.state.settings.isTaxIncluded
-        ? Math.round((totalCents * taxRate) / (1 + taxRate))
-        : Math.round(totalCents * taxRate);
+      const pricing = computePricing(subtotalCents, this.state.settings, payload.discount ?? { type: 'none' });
+      const { discountCents, totalCents, taxCents } = pricing;
 
       // Payment validation
       if (payload.paymentMethod === 'cash') {
@@ -932,7 +950,7 @@ class DataService {
         customer_notes: payload.customerNotes || null,
         subtotal_cents: subtotalCents,
         discount_cents: discountCents,
-        discount_label: payload.discountLabel || null,
+        discount_label: pricing.label || null,
         tax_cents: taxCents,
         total_cents: totalCents,
         payment_status: 'paid',
@@ -1036,7 +1054,7 @@ class DataService {
         customerNotes: payload.customerNotes,
         subtotalCents,
         discountCents,
-        discountLabel: payload.discountLabel,
+        discountLabel: pricing.label || undefined,
         taxCents,
         totalCents,
         paymentStatus: 'paid' as const,
