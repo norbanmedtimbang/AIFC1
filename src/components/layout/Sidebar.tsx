@@ -11,7 +11,8 @@ import {
   Users,
   Settings,
   Lock,
-  LogOut
+  LogOut,
+  X
 } from 'lucide-react';
 import { User, CashierShift } from '../../types';
 import { hasModuleAccess, ROLE_PERMISSIONS } from '../../services/rbac';
@@ -36,6 +37,8 @@ interface SidebarProps {
   lowStockCount: number;
   onSwitchUser: () => void;
   onLockTerminal: () => void;
+  isMobileOpen?: boolean;
+  onCloseMobile?: () => void;
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({
@@ -45,7 +48,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
   activeShift,
   lowStockCount,
   onSwitchUser,
-  onLockTerminal
+  onLockTerminal,
+  isMobileOpen = false,
+  onCloseMobile
 }) => {
   const roleConfig = ROLE_PERMISSIONS[currentUser.role];
 
@@ -70,12 +75,29 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const visibleNav = allNavItems.filter(item => hasModuleAccess(currentUser.role, item.id));
   const canAccessSettings = hasModuleAccess(currentUser.role, 'settings');
 
-  return (
-    <aside className="w-56 bg-[#FBF9F5] text-[#292929] flex flex-col h-screen shrink-0 border-r border-[#E8E2D9] select-none">
-      {/* Brand */}
-      <div className="px-5 py-5 border-b border-[#E8E2D9]">
+  const handleItemClick = (mod: NavModule) => {
+    onSelectModule(mod);
+    if (onCloseMobile) {
+      onCloseMobile();
+    }
+  };
+
+  const handleSwitchUserClick = () => {
+    if (onCloseMobile) onCloseMobile();
+    onSwitchUser();
+  };
+
+  const handleLockClick = () => {
+    if (onCloseMobile) onCloseMobile();
+    onLockTerminal();
+  };
+
+  const sidebarContent = (
+    <div className="flex flex-col h-full bg-[#FBF9F5] text-[#292929] select-none">
+      {/* Brand & Mobile Close */}
+      <div className="px-5 py-4 border-b border-[#E8E2D9] flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <div className="w-9 h-9 rounded-xl bg-[#3B2925] text-white flex items-center justify-center shadow-[0_2px_8px_rgba(59,41,37,0.2)]">
+          <div className="w-9 h-9 rounded-xl bg-[#3B2925] text-white flex items-center justify-center shadow-[0_2px_8px_rgba(59,41,37,0.2)] shrink-0">
             <Coffee className="w-4.5 h-4.5" strokeWidth={1.8} />
           </div>
           <div className="min-w-0">
@@ -95,26 +117,37 @@ export const Sidebar: React.FC<SidebarProps> = ({
             </p>
           </div>
         </div>
+
+        {/* Mobile Close Button */}
+        {onCloseMobile && (
+          <button
+            onClick={onCloseMobile}
+            className="lg:hidden p-2 text-[#9B948C] hover:text-[#292929] hover:bg-[#EFE9DF] rounded-xl transition cursor-pointer"
+            aria-label="Close menu"
+          >
+            <X className="w-5 h-5" />
+          </button>
+        )}
       </div>
 
-      {/* Navigation */}
-      <nav className="flex-1 overflow-y-auto px-2.5 py-3 space-y-0.5">
+      {/* Navigation list */}
+      <nav className="flex-1 overflow-y-auto px-2.5 py-3 space-y-1">
         {visibleNav.map(item => {
           const Icon = item.icon;
           const isActive = currentModule === item.id;
           return (
             <button
               key={item.id}
-              onClick={() => onSelectModule(item.id)}
-              className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-[12.5px] font-medium transition-all duration-150 cursor-pointer ${
+              onClick={() => handleItemClick(item.id)}
+              className={`w-full flex items-center justify-between px-3.5 py-2.5 sm:py-2.5 rounded-xl text-[13px] font-medium transition-all duration-150 cursor-pointer min-h-[42px] ${
                 isActive
                   ? 'bg-[#3B2925] text-white shadow-[0_2px_8px_rgba(59,41,37,0.18)]'
                   : 'text-[#6E6862] hover:bg-[#EFE9DF]/80 hover:text-[#292929]'
               }`}
             >
-              <div className="flex items-center gap-2.5">
+              <div className="flex items-center gap-3">
                 <Icon
-                  className={`w-[15px] h-[15px] shrink-0 ${
+                  className={`w-4 h-4 shrink-0 ${
                     isActive ? 'text-white' : 'text-[#9B948C]'
                   }`}
                   strokeWidth={isActive ? 2.1 : 1.75}
@@ -138,20 +171,20 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
         {canAccessSettings && (
           <>
-            <div className="py-2.5 px-1">
+            <div className="py-2 px-1">
               <div className="h-px bg-[#E8E2D9]" />
             </div>
 
             <button
-              onClick={() => onSelectModule('settings')}
-              className={`w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-[12.5px] font-medium transition-all duration-150 cursor-pointer ${
+              onClick={() => handleItemClick('settings')}
+              className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-[13px] font-medium transition-all duration-150 cursor-pointer min-h-[42px] ${
                 currentModule === 'settings'
                   ? 'bg-[#3B2925] text-white shadow-[0_2px_8px_rgba(59,41,37,0.18)]'
                   : 'text-[#6E6862] hover:bg-[#EFE9DF]/80 hover:text-[#292929]'
               }`}
             >
               <Settings
-                className={`w-[15px] h-[15px] shrink-0 ${
+                className={`w-4 h-4 shrink-0 ${
                   currentModule === 'settings' ? 'text-white' : 'text-[#9B948C]'
                 }`}
                 strokeWidth={currentModule === 'settings' ? 2.1 : 1.75}
@@ -163,12 +196,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
       </nav>
 
       {/* User footer */}
-      <div className="p-2.5 border-t border-[#E8E2D9] bg-[#F7F3EB]/60">
-        <div className="flex items-center gap-1.5 rounded-xl p-1.5 hover:bg-[#EFE9DF]/60 transition">
+      <div className="p-3 border-t border-[#E8E2D9] bg-[#F7F3EB]/60">
+        <div className="flex items-center gap-2 rounded-xl p-1.5 hover:bg-[#EFE9DF]/60 transition">
           <button
-            onClick={onSwitchUser}
-            title="Switch User / Log Out"
-            className="flex-1 flex items-center gap-2.5 text-left cursor-pointer min-w-0"
+            onClick={handleSwitchUserClick}
+            title="Switch Active User"
+            className="flex-1 flex items-center gap-2.5 text-left cursor-pointer min-w-0 py-1"
           >
             <div className="w-8 h-8 rounded-xl bg-[#3B2925] text-white flex items-center justify-center text-[11px] font-semibold shrink-0 shadow-[0_1px_3px_rgba(59,41,37,0.15)]">
               {currentUser.fullName.charAt(0).toUpperCase()}
@@ -189,14 +222,40 @@ export const Sidebar: React.FC<SidebarProps> = ({
             </div>
           </button>
           <button
-            onClick={onLockTerminal}
+            onClick={handleLockClick}
             title="Lock register"
-            className="p-1.5 text-[#9B948C] hover:text-[#3B2925] rounded-lg hover:bg-white transition cursor-pointer shrink-0"
+            className="p-2 text-[#9B948C] hover:text-[#3B2925] rounded-xl hover:bg-white transition cursor-pointer shrink-0 min-w-[36px] min-h-[36px] flex items-center justify-center"
           >
-            <Lock className="w-3.5 h-3.5" strokeWidth={1.8} />
+            <Lock className="w-4 h-4" strokeWidth={1.8} />
           </button>
         </div>
       </div>
-    </aside>
+    </div>
+  );
+
+  return (
+    <>
+      {/* Desktop Persistent Sidebar */}
+      <aside className="hidden lg:flex w-56 shrink-0 h-screen border-r border-[#E8E2D9] flex-col select-none">
+        {sidebarContent}
+      </aside>
+
+      {/* Mobile / Tablet Off-Canvas Drawer */}
+      {isMobileOpen && (
+        <div className="fixed inset-0 z-50 lg:hidden flex">
+          {/* Backdrop */}
+          <div
+            className="fixed inset-0 bg-black/50 backdrop-blur-2xs transition-opacity animate-in fade-in"
+            onClick={onCloseMobile}
+            aria-hidden="true"
+          />
+
+          {/* Drawer container */}
+          <div className="relative w-64 max-w-[80vw] h-full bg-[#FBF9F5] shadow-2xl z-10 flex flex-col animate-in slide-in-from-left duration-200">
+            {sidebarContent}
+          </div>
+        </div>
+      )}
+    </>
   );
 };

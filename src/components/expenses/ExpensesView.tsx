@@ -105,9 +105,9 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({
   };
 
   return (
-    <div className="p-6 md:p-8 space-y-6 max-w-6xl mx-auto overflow-y-auto">
+    <div className="p-4 sm:p-6 md:p-8 space-y-5 sm:space-y-6 max-w-6xl mx-auto overflow-y-auto w-full">
       {/* Top Header */}
-      <div className="flex flex-col sm:flex-row sm:items-baseline justify-between gap-4 border-b border-[#E8E2D9] pb-4">
+      <div className="flex flex-col sm:flex-row sm:items-baseline justify-between gap-3 border-b border-[#E8E2D9] pb-4">
         <div>
           <h1 className="text-xl font-bold text-[#292929]">Store Expenses</h1>
           <p className="text-xs text-[#7A736C] mt-0.5">
@@ -115,8 +115,8 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({
           </p>
         </div>
 
-        <div className="flex items-center gap-4">
-          <div className="text-right">
+        <div className="flex flex-wrap items-center justify-between sm:justify-end gap-3 w-full sm:w-auto">
+          <div className="text-left sm:text-right">
             <span className="text-xs text-[#7A736C]">Today's Total: </span>
             <span className="text-sm font-bold font-mono text-[#A25035]">
               {formatPHP(totalExpensesTodayCents)}
@@ -132,55 +132,57 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({
         </div>
       </div>
 
-      {/* Expenses Table */}
-      <div className="bg-white rounded-xl border border-[#E8E2D9] overflow-hidden">
-        <table className="w-full text-left text-xs">
-          <thead className="bg-[#FBF9F5] border-b border-[#E8E2D9] text-[#7A736C]">
-            <tr>
-              <th className="py-2.5 px-4 font-medium">Date & Time</th>
-              <th className="py-2.5 px-4 font-medium">Payee</th>
-              <th className="py-2.5 px-4 font-medium">Category</th>
-              <th className="py-2.5 px-4 font-medium">Description</th>
-              <th className="py-2.5 px-4 font-medium">Receipt / Ref</th>
-              <th className="py-2.5 px-4 font-medium text-right">Amount</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-[#F7F3EB]">
-            {expenses.length === 0 ? (
+      {/* Expenses Table with horizontal scroll container */}
+      <div className="bg-white rounded-2xl border border-[#E8E2D9] overflow-hidden shadow-xs">
+        <div className="overflow-x-auto w-full">
+          <table className="w-full min-w-[650px] text-left text-xs">
+            <thead className="bg-[#FBF9F5] border-b border-[#E8E2D9] text-[#7A736C]">
               <tr>
-                <td colSpan={6} className="py-8 text-center text-xs text-[#9B948C]">
-                  No expenses recorded yet.
-                </td>
+                <th className="py-2.5 px-4 font-medium">Date & Time</th>
+                <th className="py-2.5 px-4 font-medium">Payee</th>
+                <th className="py-2.5 px-4 font-medium">Category</th>
+                <th className="py-2.5 px-4 font-medium">Description</th>
+                <th className="py-2.5 px-4 font-medium">Receipt / Ref</th>
+                <th className="py-2.5 px-4 font-medium text-right">Amount</th>
               </tr>
-            ) : (
-              expenses.map(exp => (
-                <tr key={exp.id} className="hover:bg-[#FAF7F2] transition">
-                  <td className="py-2.5 px-4 text-[#7A736C]">
-                    {new Date(exp.spentAt).toLocaleDateString([], {
-                      month: 'short',
-                      day: 'numeric'
-                    })}{' '}
-                    {new Date(exp.spentAt).toLocaleTimeString([], {
-                      hour: '2-digit',
-                      minute: '2-digit'
-                    })}
-                  </td>
-                  <td className="py-2.5 px-4 font-medium text-[#292929]">{exp.payee}</td>
-                  <td className="py-2.5 px-4 text-[#6E6862]">
-                    {exp.categoryName}
-                  </td>
-                  <td className="py-2.5 px-4 text-[#292929]">{exp.description}</td>
-                  <td className="py-2.5 px-4 font-mono text-[#7A736C]">
-                    {exp.receiptReference || '—'}
-                  </td>
-                  <td className="py-2.5 px-4 text-right font-mono font-medium text-[#292929]">
-                    {formatPHP(exp.amountCents)}
+            </thead>
+            <tbody className="divide-y divide-[#F7F3EB]">
+              {expenses.length === 0 ? (
+                <tr>
+                  <td colSpan={6} className="py-8 text-center text-xs text-[#9B948C]">
+                    No expenses recorded yet.
                   </td>
                 </tr>
-              ))
-            )}
-          </tbody>
-        </table>
+              ) : (
+                expenses.map(exp => (
+                  <tr key={exp.id} className="hover:bg-[#FAF7F2] transition">
+                    <td className="py-2.5 px-4 text-[#7A736C] whitespace-nowrap">
+                      {new Date(exp.spentAt).toLocaleDateString([], {
+                        month: 'short',
+                        day: 'numeric'
+                      })}{' '}
+                      {new Date(exp.spentAt).toLocaleTimeString([], {
+                        hour: '2-digit',
+                        minute: '2-digit'
+                      })}
+                    </td>
+                    <td className="py-2.5 px-4 font-medium text-[#292929]">{exp.payee}</td>
+                    <td className="py-2.5 px-4 text-[#6E6862]">
+                      {exp.categoryName}
+                    </td>
+                    <td className="py-2.5 px-4 text-[#292929]">{exp.description}</td>
+                    <td className="py-2.5 px-4 font-mono text-[#7A736C]">
+                      {exp.receiptReference || '—'}
+                    </td>
+                    <td className="py-2.5 px-4 text-right font-mono font-medium text-[#292929] whitespace-nowrap">
+                      {formatPHP(exp.amountCents)}
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
       </div>
 
       {/* EXPENSE MODAL */}

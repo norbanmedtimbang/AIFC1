@@ -165,6 +165,12 @@ class DataService {
     return user;
   }
 
+  public verifyUserPin(userId: string, pin: string): User | null {
+    const user = this.state.users.find(u => u.id === userId && u.status === 'active');
+    if (!user) return null;
+    return user.pinHash === pin ? user : null;
+  }
+
   public loadOfflineData(): AppDataState {
     const local = db.getState();
     this.state = {
@@ -1650,6 +1656,16 @@ class DataService {
 
     // ── Supabase persistence (authoritative when configured) ──
     if (isSupabaseConfigured() && supabase) {
+      // Ensure supplier exists in Supabase so foreign key constraints on purchases.supplier_id succeed
+      try {
+        await supabase.from('suppliers').upsert({
+          id: newPurchase.supplierId,
+          company_name: newPurchase.supplierName
+        }, { onConflict: 'id' });
+      } catch (supErr) {
+        console.warn('Notice: suppliers auto-sync in recordPurchase:', supErr);
+      }
+
       const { error: hdrErr } = await supabase.from('purchases').insert({
         id: newPurchase.id,
         supplier_id: newPurchase.supplierId,

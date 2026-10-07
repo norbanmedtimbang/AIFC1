@@ -91,7 +91,7 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
   }, [sales]);
 
   return (
-    <div className="p-6 md:p-8 space-y-6 max-w-6xl mx-auto overflow-y-auto">
+    <div className="p-4 sm:p-6 md:p-8 space-y-6 max-w-6xl mx-auto overflow-y-auto w-full">
       {/* Refund Error Banner */}
       {refundError && (
         <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-xs text-rose-700 flex items-center justify-between">
@@ -161,9 +161,10 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
         </div>
       </div>
 
-      {/* Clean Table */}
-      <div className="bg-white rounded-xl border border-[#E8E2D9] overflow-hidden">
-        <table className="w-full text-left text-xs">
+      {/* Clean Table with horizontal scroll container */}
+      <div className="bg-white rounded-2xl border border-[#E8E2D9] overflow-hidden shadow-xs">
+        <div className="overflow-x-auto w-full">
+          <table className="w-full min-w-[680px] text-left text-xs">
           <thead className="bg-[#FBF9F5] border-b border-[#E8E2D9] text-[#7A736C]">
             <tr>
               <th className="py-2.5 px-4 font-medium">Order #</th>
@@ -260,6 +261,7 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
             )}
           </tbody>
         </table>
+        </div>
       </div>
 
       {/* INSPECTOR MODAL */}

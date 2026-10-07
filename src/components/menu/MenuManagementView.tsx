@@ -321,8 +321,9 @@ export const MenuManagementView: React.FC<MenuManagementViewProps> = ({
           </div>
 
           {/* Products Table */}
-          <div className="bg-white rounded-xl border border-[#E8E2D9] overflow-hidden">
-            <table className="w-full text-left text-xs">
+          <div className="bg-white rounded-xl border border-[#E8E2D9] overflow-hidden shadow-xs">
+            <div className="overflow-x-auto w-full">
+              <table className="w-full min-w-[700px] text-left text-xs">
               <thead className="bg-[#FBF9F5] border-b border-[#E8E2D9] text-[#7A736C]">
                 <tr>
                   <th className="py-2.5 px-4 font-medium">Product Name</th>
@@ -419,6 +420,7 @@ export const MenuManagementView: React.FC<MenuManagementViewProps> = ({
                 })}
               </tbody>
             </table>
+            </div>
           </div>
         </div>
       )}
@@ -540,7 +542,7 @@ export const MenuManagementView: React.FC<MenuManagementViewProps> = ({
             </div>
 
             <div className="p-5 space-y-4 max-h-[70vh] overflow-y-auto text-xs">
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="text-xs font-medium text-[#292929] block mb-1">
                     Product Name *

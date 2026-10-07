@@ -34,7 +34,7 @@ export const PurchasesView: React.FC<PurchasesViewProps> = ({
 
   // New Purchase Order Modal
   const [isPurchaseModalOpen, setIsPurchaseModalOpen] = useState(false);
-  const [selectedSupplierId, setSelectedSupplierId] = useState(suppliers[0]?.id || '');
+  const [selectedSupplierId, setSelectedSupplierId] = useState('');
   const [invoiceNumber, setInvoiceNumber] = useState('');
   const [poStatus, setPoStatus] = useState<'received' | 'pending'>('received');
   const [poItems, setPoItems] = useState<PurchaseItem[]>([]);
@@ -130,11 +130,13 @@ export const PurchasesView: React.FC<PurchasesViewProps> = ({
 
   const poTotalCents = poItems.reduce((sum, item) => sum + item.totalCostCents, 0);
 
+  const effectiveSupplierId = selectedSupplierId || (suppliers[0]?.id ?? '');
+
   const handleSavePurchaseOrder = async () => {
     setModalError(null);
     if (isSubmitting) return;
 
-    const supplier = suppliers.find(s => s.id === selectedSupplierId) || suppliers[0];
+    const supplier = suppliers.find(s => s.id === effectiveSupplierId) || suppliers[0];
     if (!supplier) {
       setModalError('Please register and choose a vendor supplier.');
       return;
@@ -177,7 +179,7 @@ export const PurchasesView: React.FC<PurchasesViewProps> = ({
   };
 
   return (
-    <div className="p-6 md:p-8 space-y-6 max-w-6xl mx-auto overflow-y-auto">
+    <div className="p-4 sm:p-6 md:p-8 space-y-5 sm:space-y-6 max-w-6xl mx-auto overflow-y-auto w-full">
       {/* Top Header */}
       <div className="flex flex-col sm:flex-row sm:items-baseline justify-between gap-4 border-b border-[#E8E2D9] pb-4">
         <div>
@@ -188,7 +190,7 @@ export const PurchasesView: React.FC<PurchasesViewProps> = ({
         </div>
 
         {/* Tab Controls */}
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <div className="flex items-center gap-1 bg-[#F7F3EB] p-1 rounded-xl border border-[#E8E2D9]">
             <button
               onClick={() => setActiveTab('purchases')}
@@ -217,6 +219,7 @@ export const PurchasesView: React.FC<PurchasesViewProps> = ({
               if (activeTab === 'suppliers') {
                 setIsSupplierModalOpen(true);
               } else {
+                setSelectedSupplierId(suppliers[0]?.id || '');
                 setIsPurchaseModalOpen(true);
               }
             }}
@@ -230,8 +233,9 @@ export const PurchasesView: React.FC<PurchasesViewProps> = ({
 
       {/* PURCHASES LIST TAB */}
       {activeTab === 'purchases' && (
-        <div className="bg-white rounded-xl border border-[#E8E2D9] overflow-hidden">
-          <table className="w-full text-left text-xs">
+        <div className="bg-white rounded-2xl border border-[#E8E2D9] overflow-hidden shadow-xs">
+          <div className="overflow-x-auto w-full">
+            <table className="w-full min-w-[700px] text-left text-xs">
             <thead className="bg-[#FBF9F5] border-b border-[#E8E2D9] text-[#7A736C]">
               <tr>
                 <th className="py-2.5 px-4 font-medium">Date</th>
@@ -288,44 +292,47 @@ export const PurchasesView: React.FC<PurchasesViewProps> = ({
               )}
             </tbody>
           </table>
+          </div>
         </div>
       )}
 
       {/* SUPPLIERS TAB */}
       {activeTab === 'suppliers' && (
-        <div className="bg-white rounded-xl border border-[#E8E2D9] overflow-hidden">
-          <table className="w-full text-left text-xs">
-            <thead className="bg-[#FBF9F5] border-b border-[#E8E2D9] text-[#7A736C]">
-              <tr>
-                <th className="py-2.5 px-4 font-medium">Company Name</th>
-                <th className="py-2.5 px-4 font-medium">Contact Person</th>
-                <th className="py-2.5 px-4 font-medium">Phone</th>
-                <th className="py-2.5 px-4 font-medium">Email</th>
-                <th className="py-2.5 px-4 font-medium">Address</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-[#F7F3EB]">
-              {suppliers.length === 0 ? (
+        <div className="bg-white rounded-2xl border border-[#E8E2D9] overflow-hidden shadow-xs">
+          <div className="overflow-x-auto w-full">
+            <table className="w-full min-w-[650px] text-left text-xs">
+              <thead className="bg-[#FBF9F5] border-b border-[#E8E2D9] text-[#7A736C]">
                 <tr>
-                  <td colSpan={5} className="py-8 text-center text-xs text-[#9B948C]">
-                    No vendors listed yet. Click "Add Vendor" to register roasters and suppliers.
-                  </td>
+                  <th className="py-2.5 px-4 font-medium">Company Name</th>
+                  <th className="py-2.5 px-4 font-medium">Contact Person</th>
+                  <th className="py-2.5 px-4 font-medium">Phone</th>
+                  <th className="py-2.5 px-4 font-medium">Email</th>
+                  <th className="py-2.5 px-4 font-medium">Address</th>
                 </tr>
-              ) : (
-                suppliers.map(sup => (
-                  <tr key={sup.id} className="hover:bg-[#FAF7F2] transition">
-                    <td className="py-3 px-4 font-medium text-[#292929]">
-                      {sup.companyName}
+              </thead>
+              <tbody className="divide-y divide-[#F7F3EB]">
+                {suppliers.length === 0 ? (
+                  <tr>
+                    <td colSpan={5} className="py-8 text-center text-xs text-[#9B948C]">
+                      No vendors listed yet. Click "Add Vendor" to register roasters and suppliers.
                     </td>
-                    <td className="py-3 px-4 text-[#6E6862]">{sup.contactPerson || '—'}</td>
-                    <td className="py-3 px-4 text-[#7A736C] font-mono">{sup.phone || '—'}</td>
-                    <td className="py-3 px-4 text-[#7A736C]">{sup.email || '—'}</td>
-                    <td className="py-3 px-4 text-[#7A736C] truncate max-w-xs">{sup.address || '—'}</td>
                   </tr>
-                ))
-              )}
-            </tbody>
-          </table>
+                ) : (
+                  suppliers.map(sup => (
+                    <tr key={sup.id} className="hover:bg-[#FAF7F2] transition">
+                      <td className="py-3 px-4 font-medium text-[#292929]">
+                        {sup.companyName}
+                      </td>
+                      <td className="py-3 px-4 text-[#6E6862]">{sup.contactPerson || '—'}</td>
+                      <td className="py-3 px-4 text-[#7A736C] font-mono whitespace-nowrap">{sup.phone || '—'}</td>
+                      <td className="py-3 px-4 text-[#7A736C]">{sup.email || '—'}</td>
+                      <td className="py-3 px-4 text-[#7A736C] truncate max-w-xs">{sup.address || '—'}</td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
 
@@ -453,7 +460,10 @@ export const PurchasesView: React.FC<PurchasesViewProps> = ({
                 <p className="text-xs text-[#7A736C] mt-0.5">Record received beans or dairy</p>
               </div>
               <button
-                onClick={() => setIsPurchaseModalOpen(false)}
+                onClick={() => {
+                  setIsPurchaseModalOpen(false);
+                  setModalError(null);
+                }}
                 className="p-1 rounded-lg text-[#7A736C] hover:text-[#292929] cursor-pointer"
               >
                 <X className="w-4 h-4" />
@@ -467,22 +477,28 @@ export const PurchasesView: React.FC<PurchasesViewProps> = ({
                   <span>{modalError}</span>
                 </div>
               )}
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="text-xs font-medium text-[#292929] block mb-1">
                     Select Vendor *
                   </label>
-                  <select
-                    value={selectedSupplierId}
-                    onChange={e => setSelectedSupplierId(e.target.value)}
-                    className="w-full bg-white border border-[#E8E2D9] rounded-xl px-3 py-1.5 text-xs text-[#292929] outline-hidden focus:border-[#3B2925]"
-                  >
-                    {suppliers.map(s => (
-                      <option key={s.id} value={s.id}>
-                        {s.companyName}
-                      </option>
-                    ))}
-                  </select>
+                  {suppliers.length === 0 ? (
+                    <div className="text-[11px] text-amber-700 bg-amber-50 border border-amber-200 rounded-xl p-2.5">
+                      No vendors listed. Please add a vendor first under the Vendors tab.
+                    </div>
+                  ) : (
+                    <select
+                      value={effectiveSupplierId}
+                      onChange={e => setSelectedSupplierId(e.target.value)}
+                      className="w-full bg-white border border-[#E8E2D9] rounded-xl px-3 py-1.5 text-xs text-[#292929] outline-hidden focus:border-[#3B2925] cursor-pointer"
+                    >
+                      {suppliers.map(s => (
+                        <option key={s.id} value={s.id}>
+                          {s.companyName}
+                        </option>
+                      ))}
+                    </select>
+                  )}
                 </div>
 
                 <div>
@@ -545,32 +561,38 @@ export const PurchasesView: React.FC<PurchasesViewProps> = ({
                     {poItems.map(item => (
                       <div
                         key={item.id}
-                        className="p-2.5 bg-[#FBF9F5] rounded-xl border border-[#E8E2D9] flex items-center justify-between gap-2"
+                        className="p-3 bg-[#FBF9F5] rounded-xl border border-[#E8E2D9] flex flex-col sm:flex-row sm:items-center justify-between gap-2.5"
                       >
-                        <div className="flex-1 truncate">
+                        <div className="flex-1 min-w-0">
                           <p className="font-medium text-[#292929] truncate">{item.itemName}</p>
                           <p className="text-[10px] text-[#7A736C]">Unit: {item.unit}</p>
                         </div>
-                        <div className="flex items-center gap-2">
-                          <input
-                            type="number"
-                            value={item.quantity}
-                            onChange={e => handleUpdatePoItemQty(item.id, parseFloat(e.target.value) || 0)}
-                            className="w-16 bg-white border border-[#E8E2D9] rounded px-1.5 py-0.5 text-right font-mono"
-                          />
-                          <input
-                            type="number"
-                            step="0.01"
-                            value={item.unitCostCents / 100}
-                            onChange={e => handleUpdatePoItemCost(item.id, parseFloat(e.target.value) || 0)}
-                            className="w-16 bg-white border border-[#E8E2D9] rounded px-1.5 py-0.5 text-right font-mono"
-                          />
+                        <div className="flex items-center justify-between sm:justify-end gap-2 shrink-0">
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-[10px] text-[#7A736C]">Qty:</span>
+                            <input
+                              type="number"
+                              value={item.quantity}
+                              onChange={e => handleUpdatePoItemQty(item.id, parseFloat(e.target.value) || 0)}
+                              className="w-16 bg-white border border-[#E8E2D9] rounded-lg px-2 py-1 text-right font-mono"
+                            />
+                          </div>
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-[10px] text-[#7A736C]">₱:</span>
+                            <input
+                              type="number"
+                              step="0.01"
+                              value={item.unitCostCents / 100}
+                              onChange={e => handleUpdatePoItemCost(item.id, parseFloat(e.target.value) || 0)}
+                              className="w-20 bg-white border border-[#E8E2D9] rounded-lg px-2 py-1 text-right font-mono"
+                            />
+                          </div>
                           <button
                             type="button"
                             onClick={() => handleRemovePoItem(item.id)}
-                            className="text-[#9B948C] hover:text-[#A25035] p-0.5 cursor-pointer"
+                            className="text-[#9B948C] hover:text-[#A25035] p-1.5 rounded-lg hover:bg-rose-50 cursor-pointer"
                           >
-                            <Trash2 className="w-3.5 h-3.5" />
+                            <Trash2 className="w-4 h-4" />
                           </button>
                         </div>
                       </div>

@@ -16,6 +16,7 @@ import { StaffView } from './components/staff/StaffView';
 import { SettingsView } from './components/settings/SettingsView';
 import { PinDialog } from './components/shared/PinDialog';
 import { PinLoginView } from './components/auth/PinLoginView';
+import { SwitchUserModal } from './components/auth/SwitchUserModal';
 import { AccessDeniedView } from './components/shared/AccessDeniedView';
 import { hasModuleAccess, getDefaultModuleForRole } from './services/rbac';
 import { Lock, Coffee, RefreshCw, AlertTriangle } from 'lucide-react';
@@ -25,35 +26,17 @@ export default function App() {
   const [isLoading, setIsLoading] = useState(true);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [connectionError, setConnectionError] = useState<string | null>(null);
-  // Data freshness for the dashboard: never show cached numbers as if they were live
-  const [syncError, setSyncError] = useState<string | null>(null);
-  const [hasSynced, setHasSynced] = useState(false);
-  const [isSyncing, setIsSyncing] = useState(false);
   const [currentModule, setCurrentModule] = useState<NavModule>('pos');
   const [isLocked, setIsLocked] = useState(false);
   const [isSwitchUserOpen, setIsSwitchUserOpen] = useState(false);
+  const [isMobileNavOpen, setIsMobileNavOpen] = useState(false);
 
   // Sync state from Supabase data service
-  const applySyncStatus = useCallback(() => {
-    const status = dataService.getDataSourceStatus();
-    setSyncError(status.ok ? null : status.error || 'Unable to reach the database.');
-    if (status.ok) setHasSynced(true);
-  }, []);
-
   const refreshData = useCallback(() => {
-    setIsSyncing(true);
-    dataService
-      .loadAllData()
-      .then(state => {
-        setDbState(state);
-        applySyncStatus();
-      })
-      .catch(err => {
-        console.error('Data refresh error:', err);
-        setSyncError(err instanceof Error ? err.message : 'Unable to refresh data.');
-      })
-      .finally(() => setIsSyncing(false));
-  }, [applySyncStatus]);
+    dataService.loadAllData().then(state => setDbState(state)).catch(err => {
+      console.error('Data refresh error:', err);
+    });
+  }, []);
 
   // Initial Load & Realtime Sync
   const loadInitialData = useCallback(async () => {
@@ -62,16 +45,14 @@ export default function App() {
     try {
       const liveData = await dataService.loadAllData();
       setDbState(liveData);
-      applySyncStatus();
       setIsLoading(false);
     } catch (err) {
       console.warn('Network or database connection issue, smoothly using offline register cache:', err);
       const offlineData = dataService.loadOfflineData();
       setDbState(offlineData);
-      setSyncError(err instanceof Error ? err.message : 'Unable to reach the database.');
       setIsLoading(false);
     }
-  }, [applySyncStatus]);
+  }, []);
 
   useEffect(() => {
     loadInitialData();
@@ -156,8 +137,8 @@ export default function App() {
       subtitle: 'Petty cash disbursements, emergency ice/dairy runs, and shift expenses'
     },
     reports: {
-      title: 'Reports & Readings',
-      subtitle: 'Official POS X-Reading, Z-Reading, hourly velocity, and payment distribution'
+      title: 'Sales Reports & Analytics',
+      subtitle: 'Monthly, yearly, and overall sales metrics, revenue velocity, and breakdown'
     },
     staff: {
       title: currentUser.role === 'cashier' ? 'Cashier Shifts' : 'Staff & Shifts',
@@ -259,7 +240,7 @@ export default function App() {
   }
 
   return (
-    <div className="flex h-screen w-screen overflow-hidden bg-c5-cream select-none text-c5-charcoal">
+    <div className="flex h-screen w-screen max-w-full overflow-hidden bg-c5-cream select-none text-c5-charcoal">
       {/* 10-MODULE SIDEBAR WITH AUTOMATIC RBAC */}
       <Sidebar
         currentModule={currentModule}
@@ -267,12 +248,14 @@ export default function App() {
         currentUser={currentUser}
         activeShift={activeShift}
         lowStockCount={lowStockCount}
-        onSwitchUser={handleLogout}
+        onSwitchUser={() => setIsSwitchUserOpen(true)}
         onLockTerminal={handleLockTerminal}
+        isMobileOpen={isMobileNavOpen}
+        onCloseMobile={() => setIsMobileNavOpen(false)}
       />
 
       {/* MAIN VIEWPORT */}
-      <div className="flex-1 flex flex-col h-screen overflow-hidden">
+      <div className="flex-1 flex flex-col h-screen min-w-0 overflow-hidden">
         {/* TOP STATUS HEADER */}
         <Header
           title={moduleInfo[currentModule].title}
@@ -281,11 +264,12 @@ export default function App() {
           activeShift={activeShift}
           settings={dbState.settings}
           onOpenShiftModal={() => setCurrentModule('staff')}
-          onSwitchUser={handleLogout}
+          onSwitchUser={() => setIsSwitchUserOpen(true)}
+          onToggleMobileMenu={() => setIsMobileNavOpen(prev => !prev)}
         />
 
         {/* ACTIVE MODULE CONTAINER WITH DIRECT ACCESS BLOCKING */}
-        <main className="flex-1 overflow-hidden bg-c5-cream">
+        <main className="flex-1 min-w-0 overflow-hidden bg-c5-cream flex flex-col">
           {!hasModuleAccess(currentUser.role, currentModule) ? (
             <AccessDeniedView
               currentModule={currentModule}
@@ -309,20 +293,14 @@ export default function App() {
 
               {currentModule === 'dashboard' && (
                 <DashboardView
-                  currentUser={currentUser}
                   sales={dbState.sales}
                   inventoryItems={dbState.inventoryItems}
-                  shifts={dbState.shifts}
-                  cashMovements={dbState.cashMovements}
-                  expenses={dbState.expenses}
-                  purchases={dbState.purchases}
-                  syncState={syncError ? 'error' : !hasSynced && isSyncing ? 'loading' : 'ready'}
-                  syncError={syncError}
-                  onRetry={refreshData}
+                  activeShift={activeShift}
+                  currentUser={currentUser}
                   onNavigateToPOS={() => setCurrentModule('pos')}
                   onNavigateToInventory={() => setCurrentModule('inventory')}
                   onNavigateToStaff={() => setCurrentModule('staff')}
-                  onNavigateToReports={() => setCurrentModule('reports')}
+                  onNavigateToMenu={() => setCurrentModule('menu')}
                 />
               )}
 
@@ -410,14 +388,13 @@ export default function App() {
         </main>
       </div>
 
-      {/* QUICK SWITCH CASHIER PIN DIALOG */}
-      <PinDialog
+      {/* SWITCH ACTIVE USER MODAL */}
+      <SwitchUserModal
         isOpen={isSwitchUserOpen}
         onClose={() => setIsSwitchUserOpen(false)}
         onSuccess={handleSwitchUserSuccess}
-        title="Switch Active Cashier"
-        description="Enter your 4-digit staff PIN (Default Administrator: 1234)"
-        allowedRoles={['admin', 'manager', 'cashier']}
+        users={dbState.users}
+        currentUser={currentUser}
       />
     </div>
   );

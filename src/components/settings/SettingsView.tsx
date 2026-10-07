@@ -413,10 +413,10 @@ VALUES ('usr-admin', 'admin', '1234', 'System Administrator', 'admin', 'active')
         </div>
 
         {/* Tab Controls */}
-        <div className="flex items-center gap-1 bg-c5-cream p-1 rounded-xl border border-c5-beige">
+        <div className="flex items-center gap-1 bg-c5-cream p-1 rounded-xl border border-c5-beige overflow-x-auto max-w-full scrollbar-none">
           <button
             onClick={() => setActiveTab('store')}
-            className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold transition ${
+            className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap shrink-0 transition ${
               activeTab === 'store'
                 ? 'bg-c5-espresso text-c5-cream shadow-xs'
                 : 'text-c5-charcoal hover:text-black'
@@ -426,7 +426,7 @@ VALUES ('usr-admin', 'admin', '1234', 'System Administrator', 'admin', 'active')
           </button>
           <button
             onClick={() => setActiveTab('receipt')}
-            className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold transition ${
+            className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap shrink-0 transition ${
               activeTab === 'receipt'
                 ? 'bg-c5-espresso text-c5-cream shadow-xs'
                 : 'text-c5-charcoal hover:text-black'
@@ -436,7 +436,7 @@ VALUES ('usr-admin', 'admin', '1234', 'System Administrator', 'admin', 'active')
           </button>
           <button
             onClick={() => setActiveTab('backup')}
-            className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold transition flex items-center gap-1 ${
+            className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap shrink-0 transition flex items-center gap-1 ${
               activeTab === 'backup'
                 ? 'bg-c5-espresso text-c5-cream shadow-xs'
                 : 'text-c5-charcoal hover:text-black'
@@ -447,7 +447,7 @@ VALUES ('usr-admin', 'admin', '1234', 'System Administrator', 'admin', 'active')
           </button>
           <button
             onClick={() => setActiveTab('audit')}
-            className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold transition ${
+            className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap shrink-0 transition ${
               activeTab === 'audit'
                 ? 'bg-c5-espresso text-c5-cream shadow-xs'
                 : 'text-c5-charcoal hover:text-black'
@@ -460,12 +460,12 @@ VALUES ('usr-admin', 'admin', '1234', 'System Administrator', 'admin', 'active')
 
       {/* STORE PROFILE TAB */}
       {activeTab === 'store' && (
-        <div className="max-w-2xl bg-white rounded-3xl p-6 border border-c5-beige shadow-sm space-y-4 text-xs">
+        <div className="max-w-2xl bg-white rounded-3xl p-4 sm:p-6 border border-c5-beige shadow-sm space-y-4 text-xs">
           <h3 className="font-bold text-sm text-c5-charcoal uppercase tracking-wider">
             Coffee Shop Identity
           </h3>
 
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className="font-bold text-c5-charcoal block mb-1 uppercase text-[10px]">
                 Business / Brand Name
@@ -514,7 +514,7 @@ VALUES ('usr-admin', 'admin', '1234', 'System Administrator', 'admin', 'active')
             />
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className="font-bold text-c5-charcoal block mb-1 uppercase text-[10px]">
                 Telephone / Mobile Number

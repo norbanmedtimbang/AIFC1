@@ -141,7 +141,7 @@ export const MODULE_NAMES: Record<NavModule, string> = {
   purchases: 'Purchases & Vendor Deliveries',
   orders: 'Transactions & Order Journal',
   expenses: 'Store Petty Cash & Expenses',
-  reports: 'POS Financial Readings (X/Z)',
+  reports: 'Financial & Sales Reports',
   staff: 'Staff Accounts & Shift Controls',
   settings: 'Terminal Configuration & Backups'
 };

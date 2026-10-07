@@ -61,10 +61,10 @@ export const ThermalReceiptModal: React.FC<ThermalReceiptModalProps> = ({
         </div>
 
         {/* Thermal Paper Container */}
-        <div className="p-6 bg-[#F5F2EB] flex justify-center">
+        <div className="p-3 sm:p-6 bg-[#F5F2EB] flex justify-center overflow-x-auto">
           <div
             id="printable-receipt"
-            className="w-[300px] bg-white p-6 rounded-xl shadow-md border border-dashed border-stone-300 text-stone-900 font-mono text-[11px] leading-tight select-text"
+            className="w-full max-w-[300px] bg-white p-5 sm:p-6 rounded-xl shadow-md border border-dashed border-stone-300 text-stone-900 font-mono text-[11px] leading-tight select-text"
           >
             {/* Header */}
             <div className="text-center pb-3 border-b border-dashed border-stone-400">

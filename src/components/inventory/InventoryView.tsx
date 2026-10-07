@@ -132,9 +132,9 @@ export const InventoryView: React.FC<InventoryViewProps> = ({
   };
 
   return (
-    <div className="p-6 md:p-8 space-y-6 max-w-6xl mx-auto overflow-y-auto">
+    <div className="p-4 sm:p-6 md:p-8 space-y-5 sm:space-y-6 max-w-6xl mx-auto overflow-y-auto w-full">
       {/* Top Header & Valuation */}
-      <div className="flex flex-col sm:flex-row sm:items-baseline justify-between gap-4 border-b border-[#E8E2D9] pb-4">
+      <div className="flex flex-col sm:flex-row sm:items-baseline justify-between gap-3 border-b border-[#E8E2D9] pb-4">
         <div>
           <h1 className="text-xl font-bold text-[#292929]">Inventory & Materials</h1>
           <p className="text-xs text-[#7A736C] mt-0.5">
@@ -143,7 +143,7 @@ export const InventoryView: React.FC<InventoryViewProps> = ({
         </div>
 
         {/* Action Controls */}
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <div className="flex items-center gap-1 bg-[#F7F3EB] p-1 rounded-xl border border-[#E8E2D9]">
             <button
               onClick={() => setActiveTab('stock')}
@@ -190,10 +190,10 @@ export const InventoryView: React.FC<InventoryViewProps> = ({
               className="w-full sm:w-72 bg-white border border-[#E8E2D9] rounded-xl px-3 py-1.5 text-xs text-[#292929] outline-hidden focus:border-[#3B2925]"
             />
 
-            <div className="flex items-center gap-2 self-start sm:self-auto">
+            <div className="flex items-center gap-2 w-full sm:w-auto">
               <button
                 onClick={() => setFilterMode('all')}
-                className={`px-3 py-1 rounded-lg text-xs font-medium transition cursor-pointer ${
+                className={`flex-1 sm:flex-initial px-3 py-1.5 rounded-lg text-xs font-medium transition cursor-pointer ${
                   filterMode === 'all'
                     ? 'bg-[#3B2925] text-white shadow-xs'
                     : 'bg-white border border-[#E8E2D9] text-[#6E6862] hover:bg-[#F7F3EB]'
@@ -203,7 +203,7 @@ export const InventoryView: React.FC<InventoryViewProps> = ({
               </button>
               <button
                 onClick={() => setFilterMode('low')}
-                className={`px-3 py-1 rounded-lg text-xs font-medium transition cursor-pointer ${
+                className={`flex-1 sm:flex-initial px-3 py-1.5 rounded-lg text-xs font-medium transition cursor-pointer ${
                   filterMode === 'low'
                     ? 'bg-[#3B2925] text-white shadow-xs'
                     : 'bg-white border border-[#E8E2D9] text-[#6E6862] hover:bg-[#F7F3EB]'
@@ -214,9 +214,10 @@ export const InventoryView: React.FC<InventoryViewProps> = ({
             </div>
           </div>
 
-          {/* Clean Table */}
-          <div className="bg-white rounded-xl border border-[#E8E2D9] overflow-hidden">
-            <table className="w-full text-left text-xs">
+          {/* Clean Table with horizontal scroll container */}
+          <div className="bg-white rounded-2xl border border-[#E8E2D9] overflow-hidden shadow-xs">
+            <div className="overflow-x-auto w-full">
+              <table className="w-full min-w-[650px] text-left text-xs">
               <thead className="bg-[#FBF9F5] border-b border-[#E8E2D9] text-[#7A736C]">
                 <tr>
                   <th className="py-2.5 px-4 font-medium">Material Name</th>
@@ -282,6 +283,7 @@ export const InventoryView: React.FC<InventoryViewProps> = ({
                 })}
               </tbody>
             </table>
+            </div>
           </div>
         </div>
       )}
